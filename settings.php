@@ -15,7 +15,7 @@ bootstrapFirstSuperAdmin($conn);
 ensureActiveStoreSession($conn);
 
 if (!isset($_SESSION['role']) || $_SESSION['role'] !== 'super_admin') {
-    header('Location: index.php');
+    header('Location: index.php?accessDenied=settings');
     exit();
 }
 

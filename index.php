@@ -13,6 +13,21 @@ require_once('inc/header.html');
 
 ensureActiveStoreSession($conn);
 $activeStoreID = (int) $_SESSION['activeStoreID'];
+$isSuperAdmin = isset($_SESSION['role']) && $_SESSION['role'] === 'super_admin';
+
+$accessNotice = '';
+if (isset($_GET['accessDenied'])) {
+	$deniedArea = trim((string) $_GET['accessDenied']);
+	if ($deniedArea === 'settings') {
+		$accessNotice = 'Access restricted: Settings is available to super admin only.';
+	} elseif ($deniedArea === 'dashboard') {
+		$accessNotice = 'Access restricted: Dashboard is available to super admin only.';
+	}
+}
+
+if (!$isSuperAdmin && $accessNotice === '') {
+	$accessNotice = 'Dashboard and Settings are restricted to super admin accounts.';
+}
 
 $settingsFile = 'inc/config/site_settings.json';
 $settings = [
@@ -93,6 +108,11 @@ try {
 	require 'inc/navigation.php';
 	?>
 	<div id="toastContainer" class="toast-container" aria-live="polite" aria-atomic="true"></div>
+	<?php if ($accessNotice !== '') { ?>
+		<div class="container-fluid mt-3">
+			<div class="alert alert-info mb-0" role="alert"><?php echo htmlspecialchars($accessNotice); ?></div>
+		</div>
+	<?php } ?>
 
 	<!-- Page Content -->
 	<div class="container-fluid">
@@ -100,8 +120,12 @@ try {
 			<div class="col-lg-2 sidebar-column">
 				<h1 class="my-4"></h1>
 				<div class="nav flex-column nav-pills" id="v-pills-tab" role="tablist" aria-orientation="vertical">
-					<a class="nav-link active" id="v-pills-dashboard-tab" data-toggle="pill" href="#v-pills-dashboard" role="tab" aria-controls="v-pills-dashboard" aria-selected="true">Dashboard</a>
-					<a class="nav-link" id="v-pills-item-tab" data-toggle="pill" href="#v-pills-item" role="tab" aria-controls="v-pills-item" aria-selected="false">Item</a>
+					<?php if ($isSuperAdmin) { ?>
+						<a class="nav-link active" id="v-pills-dashboard-tab" data-toggle="pill" href="#v-pills-dashboard" role="tab" aria-controls="v-pills-dashboard" aria-selected="true">Dashboard</a>
+						<a class="nav-link" id="v-pills-item-tab" data-toggle="pill" href="#v-pills-item" role="tab" aria-controls="v-pills-item" aria-selected="false">Item</a>
+					<?php } else { ?>
+						<a class="nav-link active" id="v-pills-item-tab" data-toggle="pill" href="#v-pills-item" role="tab" aria-controls="v-pills-item" aria-selected="true">Item</a>
+					<?php } ?>
 					<a class="nav-link" id="v-pills-purchase-tab" data-toggle="pill" href="#v-pills-purchase" role="tab" aria-controls="v-pills-purchase" aria-selected="false">Purchase</a>
 					<a class="nav-link" id="v-pills-vendor-tab" data-toggle="pill" href="#v-pills-vendor" role="tab" aria-controls="v-pills-vendor" aria-selected="false">Vendor</a>
 					<a class="nav-link" id="v-pills-sale-tab" data-toggle="pill" href="#v-pills-sale" role="tab" aria-controls="v-pills-sale" aria-selected="false">Sale</a>
@@ -113,75 +137,77 @@ try {
 			</div>
 			<div class="col-lg-10">
 				<div class="tab-content" id="v-pills-tabContent">
-					<div class="tab-pane fade show active" id="v-pills-dashboard" role="tabpanel" aria-labelledby="v-pills-dashboard-tab">
-						<div class="card card-outline-secondary my-4">
-							<div class="card-header d-flex justify-content-between align-items-center">
-								<span>Dashboard</span>
-								<button type="button" id="refreshDashboardBtn" class="btn btn-sm btn-outline-primary">Refresh</button>
-							</div>
-							<div class="card-body">
-								<?php if ($dashboardMovementError != '') {
-									echo '<div class="alert alert-warning">' . htmlspecialchars($dashboardMovementError) . '</div>';
-								} ?>
-								<div class="row">
-									<div class="col-md-3 mb-3">
-										<div class="dashboard-card dashboard-card-primary">
-											<div class="dashboard-label">Current Stock Value</div>
-											<div class="dashboard-value" id="dashboardCurrentStockValue"><?php echo htmlspecialchars(formatCurrency($dashboardSummary['currentStockValue'])); ?></div>
-										</div>
-									</div>
-									<div class="col-md-3 mb-3">
-										<div class="dashboard-card dashboard-card-success">
-											<div class="dashboard-label">Total Sales</div>
-											<div class="dashboard-value" id="dashboardTotalSales"><?php echo htmlspecialchars(formatCurrency($dashboardSummary['totalSales'])); ?></div>
-										</div>
-									</div>
-									<div class="col-md-3 mb-3">
-										<div class="dashboard-card dashboard-card-warning">
-											<div class="dashboard-label">Total Purchases</div>
-											<div class="dashboard-value" id="dashboardTotalPurchases"><?php echo htmlspecialchars(formatCurrency($dashboardSummary['totalPurchases'])); ?></div>
-										</div>
-									</div>
-									<div class="col-md-3 mb-3">
-										<div class="dashboard-card dashboard-card-danger">
-											<div class="dashboard-label">Total Credits</div>
-											<div class="dashboard-value" id="dashboardTotalCredits"><?php echo htmlspecialchars(formatCurrency($dashboardSummary['totalCredits'])); ?></div>
-										</div>
-									</div>
+					<?php if ($isSuperAdmin) { ?>
+						<div class="tab-pane fade show active" id="v-pills-dashboard" role="tabpanel" aria-labelledby="v-pills-dashboard-tab">
+							<div class="card card-outline-secondary my-4">
+								<div class="card-header d-flex justify-content-between align-items-center">
+									<span>Dashboard</span>
+									<button type="button" id="refreshDashboardBtn" class="btn btn-sm btn-outline-primary">Refresh</button>
 								</div>
-								<h6 class="mb-3">Stock Movement</h6>
-								<div class="table-responsive">
-									<table id="dashboardRecentMovementsTable" class="table table-sm table-striped table-bordered table-hover" style="width:100%">
-										<thead>
-											<tr>
-												<th>Date</th>
-												<th>Item</th>
-												<th>Qty</th>
-												<th>Direction</th>
-												<th>Reference</th>
-												<th>Reason</th>
-											</tr>
-										</thead>
-										<tbody>
-											<?php if (count($dashboardMovements) > 0) {
-												foreach ($dashboardMovements as $movement) {
-													echo '<tr>' .
-														'<td>' . htmlspecialchars($movement['movementDate']) . '</td>' .
-														'<td>' . htmlspecialchars($movement['itemName']) . ' (' . htmlspecialchars($movement['itemNumber']) . ')</td>' .
-														'<td>' . htmlspecialchars($movement['quantity']) . '</td>' .
-														'<td>' . htmlspecialchars($movement['direction']) . '</td>' .
-														'<td>' . htmlspecialchars($movement['referenceName']) . '</td>' .
-														'<td>' . htmlspecialchars($movement['reason']) . '</td>' .
-														'</tr>';
-												}
-											} ?>
-										</tbody>
-									</table>
+								<div class="card-body">
+									<?php if ($dashboardMovementError != '') {
+										echo '<div class="alert alert-warning">' . htmlspecialchars($dashboardMovementError) . '</div>';
+									} ?>
+									<div class="row">
+										<div class="col-md-3 mb-3">
+											<div class="dashboard-card dashboard-card-primary">
+												<div class="dashboard-label">Current Stock Value</div>
+												<div class="dashboard-value" id="dashboardCurrentStockValue"><?php echo htmlspecialchars(formatCurrency($dashboardSummary['currentStockValue'])); ?></div>
+											</div>
+										</div>
+										<div class="col-md-3 mb-3">
+											<div class="dashboard-card dashboard-card-success">
+												<div class="dashboard-label">Total Sales</div>
+												<div class="dashboard-value" id="dashboardTotalSales"><?php echo htmlspecialchars(formatCurrency($dashboardSummary['totalSales'])); ?></div>
+											</div>
+										</div>
+										<div class="col-md-3 mb-3">
+											<div class="dashboard-card dashboard-card-warning">
+												<div class="dashboard-label">Total Purchases</div>
+												<div class="dashboard-value" id="dashboardTotalPurchases"><?php echo htmlspecialchars(formatCurrency($dashboardSummary['totalPurchases'])); ?></div>
+											</div>
+										</div>
+										<div class="col-md-3 mb-3">
+											<div class="dashboard-card dashboard-card-danger">
+												<div class="dashboard-label">Total Credits</div>
+												<div class="dashboard-value" id="dashboardTotalCredits"><?php echo htmlspecialchars(formatCurrency($dashboardSummary['totalCredits'])); ?></div>
+											</div>
+										</div>
+									</div>
+									<h6 class="mb-3">Stock Movement</h6>
+									<div class="table-responsive">
+										<table id="dashboardRecentMovementsTable" class="table table-sm table-striped table-bordered table-hover" style="width:100%">
+											<thead>
+												<tr>
+													<th>Date</th>
+													<th>Item</th>
+													<th>Qty</th>
+													<th>Direction</th>
+													<th>Reference</th>
+													<th>Reason</th>
+												</tr>
+											</thead>
+											<tbody>
+												<?php if (count($dashboardMovements) > 0) {
+													foreach ($dashboardMovements as $movement) {
+														echo '<tr>' .
+															'<td>' . htmlspecialchars($movement['movementDate']) . '</td>' .
+															'<td>' . htmlspecialchars($movement['itemName']) . ' (' . htmlspecialchars($movement['itemNumber']) . ')</td>' .
+															'<td>' . htmlspecialchars($movement['quantity']) . '</td>' .
+															'<td>' . htmlspecialchars($movement['direction']) . '</td>' .
+															'<td>' . htmlspecialchars($movement['referenceName']) . '</td>' .
+															'<td>' . htmlspecialchars($movement['reason']) . '</td>' .
+															'</tr>';
+													}
+												} ?>
+											</tbody>
+										</table>
+									</div>
 								</div>
 							</div>
 						</div>
-					</div>
-					<div class="tab-pane fade" id="v-pills-item" role="tabpanel" aria-labelledby="v-pills-item-tab">
+					<?php } ?>
+					<div class="tab-pane fade<?php echo !$isSuperAdmin ? ' show active' : ''; ?>" id="v-pills-item" role="tabpanel" aria-labelledby="v-pills-item-tab">
 						<div class="card card-outline-secondary my-4">
 							<div class="card-header">Item Details</div>
 							<div class="card-body">

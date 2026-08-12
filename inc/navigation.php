@@ -30,7 +30,9 @@ if (isset($conn) && isset($_SESSION['loggedIn']) && $_SESSION['loggedIn'] === '1
 
 $activeStoreID = isset($_SESSION['activeStoreID']) ? (int) $_SESSION['activeStoreID'] : 1;
 $activeStoreName = isset($_SESSION['activeStoreName']) ? $_SESSION['activeStoreName'] : 'Main Store';
-$returnUrl = isset($_SERVER['REQUEST_URI']) ? $_SERVER['REQUEST_URI'] : '/inventory-system/index.php';
+$parsedNavBase = parse_url(ROOT_URL, PHP_URL_PATH);
+$navBasePath = rtrim($parsedNavBase !== false && $parsedNavBase !== null ? $parsedNavBase : '/inventory-system', '/');
+$returnUrl = isset($_SERVER['REQUEST_URI']) ? $_SERVER['REQUEST_URI'] : $navBasePath . '/index.php';
 ?>
 <!-- Navigation -->
 <nav class="navbar navbar-expand-lg navbar-dark bg-dark fixed-top">

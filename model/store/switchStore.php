@@ -16,10 +16,15 @@ if (isset($_POST['storeID'])) {
     setActiveStoreByID($conn, $_POST['storeID']);
 }
 
-$redirectPath = '/inventory-system/index.php';
+// Derive the application base path from ROOT_URL so the redirect works on any sub-directory or live host.
+$parsedBase = parse_url(ROOT_URL, PHP_URL_PATH);
+$basePath = rtrim($parsedBase !== false && $parsedBase !== null ? $parsedBase : '/inventory-system', '/');
+
+$redirectPath = $basePath . '/index.php';
 if (isset($_POST['returnUrl'])) {
     $candidate = trim((string) $_POST['returnUrl']);
-    if ($candidate !== '' && strpos($candidate, '/inventory-system/') === 0) {
+    // Accept the return URL only if it starts with the application base path.
+    if ($candidate !== '' && strpos($candidate, $basePath . '/') === 0) {
         $redirectPath = $candidate;
     }
 }
