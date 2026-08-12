@@ -1,0 +1,6 @@
+{
+    "siteName": "Blessed OZ",
+    "lowStockThreshold": 5,
+    "enableProductDescription": false,
+    "enableProductImage": false
+}
