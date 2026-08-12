@@ -1,6 +1,11 @@
 <?php
+session_start();
 require_once('../../inc/config/constants.php');
 require_once('../../inc/config/db.php');
+require_once('../../inc/store.php');
+
+ensureActiveStoreSession($conn);
+$activeStoreID = (int) $_SESSION['activeStoreID'];
 
 // Check if the POST request is received and if so, execute the script
 if (isset($_POST['textBoxValue'])) {
@@ -8,9 +13,9 @@ if (isset($_POST['textBoxValue'])) {
 	$customerIDString = '%' . htmlentities($_POST['textBoxValue']) . '%';
 
 	// Construct the SQL query to get the customer ID
-	$sql = 'SELECT customerID FROM customer WHERE customerID LIKE ?';
+	$sql = 'SELECT customerID FROM customer WHERE customerID LIKE ? AND storeID = ?';
 	$stmt = $conn->prepare($sql);
-	$stmt->execute([$customerIDString]);
+	$stmt->execute([$customerIDString, $activeStoreID]);
 
 	// If we receive any results from the above query, then display them in a list
 	if ($stmt->rowCount() > 0) {

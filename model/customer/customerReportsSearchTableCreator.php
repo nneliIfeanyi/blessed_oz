@@ -1,10 +1,15 @@
 <?php
+session_start();
 require_once('../../inc/config/constants.php');
 require_once('../../inc/config/db.php');
+require_once('../../inc/store.php');
 
-$customerDetailsSearchSql = 'SELECT * FROM customer';
+ensureActiveStoreSession($conn);
+$activeStoreID = (int) $_SESSION['activeStoreID'];
+
+$customerDetailsSearchSql = 'SELECT * FROM customer WHERE storeID = :storeID';
 $customerDetailsSearchStatement = $conn->prepare($customerDetailsSearchSql);
-$customerDetailsSearchStatement->execute();
+$customerDetailsSearchStatement->execute(['storeID' => $activeStoreID]);
 
 $output = '<table id="customerReportsTable" class="table table-sm table-striped table-bordered table-hover" style="width:100%">
 				<thead>

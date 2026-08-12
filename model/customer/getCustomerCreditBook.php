@@ -1,14 +1,19 @@
 <?php
+session_start();
 require_once('../../inc/config/constants.php');
 require_once('../../inc/config/db.php');
+require_once('../../inc/store.php');
+
+ensureActiveStoreSession($conn);
+$activeStoreID = (int) $_SESSION['activeStoreID'];
 
 if (isset($_POST['customerID'])) {
     $customerID = htmlentities($_POST['customerID']);
 
     try {
-        $customerSql = 'SELECT customerID, fullName FROM customer WHERE customerID = :customerID';
+        $customerSql = 'SELECT customerID, fullName FROM customer WHERE customerID = :customerID AND storeID = :storeID';
         $customerStatement = $conn->prepare($customerSql);
-        $customerStatement->execute(['customerID' => $customerID]);
+        $customerStatement->execute(['customerID' => $customerID, 'storeID' => $activeStoreID]);
 
         if ($customerStatement->rowCount() < 1) {
             echo json_encode(['success' => false, 'message' => 'Customer does not exist.']);
@@ -19,9 +24,9 @@ if (isset($_POST['customerID'])) {
         $ledgerRows = array();
         $balance = 0;
 
-        $ledgerSql = 'SELECT * FROM customer_ledger WHERE customerID = :customerID ORDER BY entryDate DESC, ledgerID DESC';
+        $ledgerSql = 'SELECT * FROM customer_ledger WHERE customerID = :customerID AND storeID = :storeID ORDER BY entryDate DESC, ledgerID DESC';
         $ledgerStatement = $conn->prepare($ledgerSql);
-        $ledgerStatement->execute(['customerID' => $customerID]);
+        $ledgerStatement->execute(['customerID' => $customerID, 'storeID' => $activeStoreID]);
         while ($row = $ledgerStatement->fetch(PDO::FETCH_ASSOC)) {
             $ledgerRows[] = $row;
         }

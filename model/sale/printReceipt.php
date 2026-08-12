@@ -1,20 +1,14 @@
 <?php
+session_start();
 require_once('../../inc/config/constants.php');
 require_once('../../inc/config/db.php');
+require_once('../../inc/store.php');
+
+ensureActiveStoreSession($conn);
+$activeStoreID = (int) $_SESSION['activeStoreID'];
 
 $settingsFile = '../../inc/config/site_settings.json';
-$receiptSettings = [
-    'siteName' => 'Inventory System'
-];
-if (file_exists($settingsFile)) {
-    $settingsJson = file_get_contents($settingsFile);
-    if ($settingsJson !== false) {
-        $settingsDecoded = json_decode($settingsJson, true);
-        if (is_array($settingsDecoded)) {
-            $receiptSettings = array_merge($receiptSettings, $settingsDecoded);
-        }
-    }
-}
+$receiptSettings = getStoreSettings($conn, $activeStoreID, $settingsFile);
 $receiptBrandName = isset($receiptSettings['siteName']) && trim($receiptSettings['siteName']) !== ''
     ? $receiptSettings['siteName']
     : 'Inventory System';
@@ -22,15 +16,15 @@ $receiptBrandName = isset($receiptSettings['siteName']) && trim($receiptSettings
 $transactionReference = isset($_GET['saleReference']) ? trim(htmlentities($_GET['saleReference'])) : '';
 
 if ($transactionReference !== '') {
-    $headerStatement = $conn->prepare('SELECT * FROM sale_headers WHERE saleReference = :saleReference');
-    $headerStatement->execute(['saleReference' => $transactionReference]);
+    $headerStatement = $conn->prepare('SELECT * FROM sale_headers WHERE saleReference = :saleReference AND storeID = :storeID');
+    $headerStatement->execute(['saleReference' => $transactionReference, 'storeID' => $activeStoreID]);
     if ($headerStatement->rowCount() < 1) {
         header('Location: ../../index.php');
         exit();
     }
     $headerRow = $headerStatement->fetch(PDO::FETCH_ASSOC);
-    $itemStatement = $conn->prepare('SELECT * FROM sale_items WHERE saleReference = :saleReference ORDER BY saleItemID ASC');
-    $itemStatement->execute(['saleReference' => $transactionReference]);
+    $itemStatement = $conn->prepare('SELECT * FROM sale_items WHERE saleReference = :saleReference AND storeID = :storeID ORDER BY saleItemID ASC');
+    $itemStatement->execute(['saleReference' => $transactionReference, 'storeID' => $activeStoreID]);
     $items = $itemStatement->fetchAll(PDO::FETCH_ASSOC);
     $customerName = isset($headerRow['customerName']) ? $headerRow['customerName'] : 'Customer';
     $totalAmount = 0;

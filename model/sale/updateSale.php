@@ -1,7 +1,13 @@
 <?php
 
+session_start();
+
 require_once('../../inc/config/constants.php');
 require_once('../../inc/config/db.php');
+require_once('../../inc/store.php');
+
+ensureActiveStoreSession($conn);
+$activeStoreID = (int) $_SESSION['activeStoreID'];
 
 if (isset($_POST['saleDetailsSaleID'])) {
 
@@ -87,9 +93,9 @@ if (isset($_POST['saleDetailsSaleID'])) {
 		}
 
 		// Get the quantity and itemNumber in original sale order
-		$orginalSaleQuantitySql = 'SELECT * FROM sale WHERE saleID = :saleID';
+		$orginalSaleQuantitySql = 'SELECT * FROM sale WHERE saleID = :saleID AND storeID = :storeID';
 		$originalSaleQuantityStatement = $conn->prepare($orginalSaleQuantitySql);
-		$originalSaleQuantityStatement->execute(['saleID' => $saleDetailsSaleID]);
+		$originalSaleQuantityStatement->execute(['saleID' => $saleDetailsSaleID, 'storeID' => $activeStoreID]);
 
 		// Get the customerID for the given customerName
 		/* $customerIDsql = 'SELECT * FROM customer WHERE fullName = :fullName';
@@ -98,9 +104,9 @@ if (isset($_POST['saleDetailsSaleID'])) {
 			$row = $customerIDStatement->fetch(PDO::FETCH_ASSOC);
 			$customerID = $row['customerID']; */
 
-		$customerIDsql = 'SELECT * FROM customer WHERE customerID = :customerID';
+		$customerIDsql = 'SELECT * FROM customer WHERE customerID = :customerID AND storeID = :storeID';
 		$customerIDStatement = $conn->prepare($customerIDsql);
-		$customerIDStatement->execute(['customerID' => $saleDetailsCustomerID]);
+		$customerIDStatement->execute(['customerID' => $saleDetailsCustomerID, 'storeID' => $activeStoreID]);
 
 		if ($customerIDStatement->rowCount() < 1) {
 			// Customer id is wrong
@@ -128,9 +134,9 @@ if (isset($_POST['saleDetailsSaleID'])) {
 				// in that case, need to update both items' stocks.
 
 				// Get the stock of the new item from item table
-				$newItemCurrentStockSql = 'SELECT * FROM item WHERE itemNumber = :itemNumber';
+				$newItemCurrentStockSql = 'SELECT * FROM item WHERE itemNumber = :itemNumber AND storeID = :storeID';
 				$newItemCurrentStockStatement = $conn->prepare($newItemCurrentStockSql);
-				$newItemCurrentStockStatement->execute(['itemNumber' => $saleDetailsItemNumber]);
+				$newItemCurrentStockStatement->execute(['itemNumber' => $saleDetailsItemNumber, 'storeID' => $activeStoreID]);
 
 				if ($newItemCurrentStockStatement->rowCount() < 1) {
 					// Item number is not in DB. Hence abort.
@@ -145,14 +151,14 @@ if (isset($_POST['saleDetailsSaleID'])) {
 				$newItemNewStock = $originalQuantityForNewItem - $enteredQuantityForNewItem;
 
 				// UPDATE the stock for new item in item table
-				$newItemStockUpdateSql = 'UPDATE item SET stock = :stock WHERE itemNumber = :itemNumber';
+				$newItemStockUpdateSql = 'UPDATE item SET stock = :stock WHERE itemNumber = :itemNumber AND storeID = :storeID';
 				$newItemStockUpdateStatement = $conn->prepare($newItemStockUpdateSql);
-				$newItemStockUpdateStatement->execute(['stock' => $newItemNewStock, 'itemNumber' => $saleDetailsItemNumber]);
+				$newItemStockUpdateStatement->execute(['stock' => $newItemNewStock, 'itemNumber' => $saleDetailsItemNumber, 'storeID' => $activeStoreID]);
 
 				// Get the current stock of the previous item
-				$previousItemCurrentStockSql = 'SELECT * FROM item WHERE itemNumber=:itemNumber';
+				$previousItemCurrentStockSql = 'SELECT * FROM item WHERE itemNumber=:itemNumber AND storeID = :storeID';
 				$previousItemCurrentStockStatement = $conn->prepare($previousItemCurrentStockSql);
-				$previousItemCurrentStockStatement->execute(['itemNumber' => $originalOrderItemNumber]);
+				$previousItemCurrentStockStatement->execute(['itemNumber' => $originalOrderItemNumber, 'storeID' => $activeStoreID]);
 
 				// Calculate the new stock value for the previous item using the existing stock in item table
 				$previousItemRow = $previousItemCurrentStockStatement->fetch(PDO::FETCH_ASSOC);
@@ -160,14 +166,14 @@ if (isset($_POST['saleDetailsSaleID'])) {
 				$previousItemNewStock = $currentQuantityForPreviousItem + $quantityInOriginalOrder;
 
 				// UPDATE the stock for previous item in item table
-				$previousItemStockUpdateSql = 'UPDATE item SET stock = :stock WHERE itemNumber = :itemNumber';
+				$previousItemStockUpdateSql = 'UPDATE item SET stock = :stock WHERE itemNumber = :itemNumber AND storeID = :storeID';
 				$previousItemStockUpdateStatement = $conn->prepare($previousItemStockUpdateSql);
-				$previousItemStockUpdateStatement->execute(['stock' => $previousItemNewStock, 'itemNumber' => $originalOrderItemNumber]);
+				$previousItemStockUpdateStatement->execute(['stock' => $previousItemNewStock, 'itemNumber' => $originalOrderItemNumber, 'storeID' => $activeStoreID]);
 
 				// Finally UPDATE the sale table for new item
-				$updateSaleDetailsSql = 'UPDATE sale SET itemNumber = :itemNumber, saleDate = :saleDate, itemName = :itemName, unitPrice = :unitPrice, discount = :discount, quantity = :quantity, customerName = :customerName, customerID = :customerID, reason = :reason WHERE saleID = :saleID';
+				$updateSaleDetailsSql = 'UPDATE sale SET itemNumber = :itemNumber, saleDate = :saleDate, itemName = :itemName, unitPrice = :unitPrice, discount = :discount, quantity = :quantity, customerName = :customerName, customerID = :customerID, reason = :reason WHERE saleID = :saleID AND storeID = :storeID';
 				$updateSaleDetailsStatement = $conn->prepare($updateSaleDetailsSql);
-				$updateSaleDetailsStatement->execute(['itemNumber' => $saleDetailsItemNumber, 'saleDate' => $saleDetailsSaleDate, 'itemName' => $saleDetailsItemName, 'unitPrice' => $saleDetailsUnitPrice, 'discount' => $saleDetailsDiscount, 'quantity' => $saleDetailsQuantity, 'customerName' => $saleDetailsCustomerName, 'customerID' => $customerID, 'reason' => $saleDetailsReason, 'saleID' => $saleDetailsSaleID]);
+				$updateSaleDetailsStatement->execute(['itemNumber' => $saleDetailsItemNumber, 'saleDate' => $saleDetailsSaleDate, 'itemName' => $saleDetailsItemName, 'unitPrice' => $saleDetailsUnitPrice, 'discount' => $saleDetailsDiscount, 'quantity' => $saleDetailsQuantity, 'customerName' => $saleDetailsCustomerName, 'customerID' => $customerID, 'reason' => $saleDetailsReason, 'saleID' => $saleDetailsSaleID, 'storeID' => $activeStoreID]);
 
 				echo '<div class="alert alert-success"><button type="button" class="close" data-dismiss="alert">&times;</button>Sale details updated.</div>';
 				exit();
@@ -175,9 +181,9 @@ if (isset($_POST['saleDetailsSaleID'])) {
 				// Item numbers are equal. That means item number is valid
 
 				// Get the quantity (stock) in item table
-				$stockSql = 'SELECT * FROM item WHERE itemNumber=:itemNumber';
+				$stockSql = 'SELECT * FROM item WHERE itemNumber=:itemNumber AND storeID = :storeID';
 				$stockStatement = $conn->prepare($stockSql);
-				$stockStatement->execute(['itemNumber' => $saleDetailsItemNumber]);
+				$stockStatement->execute(['itemNumber' => $saleDetailsItemNumber, 'storeID' => $activeStoreID]);
 
 				if ($stockStatement->rowCount() > 0) {
 					// Item exists in the item table, therefore, start updating data in sale table
@@ -189,14 +195,14 @@ if (isset($_POST['saleDetailsSaleID'])) {
 					$newStock = $originalStockInItemTable - ($quantityInNewOrder - $quantityInOriginalOrder);
 
 					// Update the new stock value in item table.
-					$updateStockSql = 'UPDATE item SET stock = :stock WHERE itemNumber = :itemNumber';
+					$updateStockSql = 'UPDATE item SET stock = :stock WHERE itemNumber = :itemNumber AND storeID = :storeID';
 					$updateStockStatement = $conn->prepare($updateStockSql);
-					$updateStockStatement->execute(['stock' => $newStock, 'itemNumber' => $saleDetailsItemNumber]);
+					$updateStockStatement->execute(['stock' => $newStock, 'itemNumber' => $saleDetailsItemNumber, 'storeID' => $activeStoreID]);
 
 					// Next, update the sale table
-					$updateSaleDetailsSql = 'UPDATE sale SET itemNumber = :itemNumber, saleDate = :saleDate, itemName = :itemName, unitPrice = :unitPrice, discount = :discount, quantity = :quantity, customerName = :customerName, customerID = :customerID, reason = :reason WHERE saleID = :saleID';
+					$updateSaleDetailsSql = 'UPDATE sale SET itemNumber = :itemNumber, saleDate = :saleDate, itemName = :itemName, unitPrice = :unitPrice, discount = :discount, quantity = :quantity, customerName = :customerName, customerID = :customerID, reason = :reason WHERE saleID = :saleID AND storeID = :storeID';
 					$updateSaleDetailsStatement = $conn->prepare($updateSaleDetailsSql);
-					$updateSaleDetailsStatement->execute(['itemNumber' => $saleDetailsItemNumber, 'saleDate' => $saleDetailsSaleDate, 'itemName' => $saleDetailsItemName, 'unitPrice' => $saleDetailsUnitPrice, 'discount' => $saleDetailsDiscount, 'quantity' => $saleDetailsQuantity, 'customerName' => $saleDetailsCustomerName, 'customerID' => $customerID, 'reason' => $saleDetailsReason, 'saleID' => $saleDetailsSaleID]);
+					$updateSaleDetailsStatement->execute(['itemNumber' => $saleDetailsItemNumber, 'saleDate' => $saleDetailsSaleDate, 'itemName' => $saleDetailsItemName, 'unitPrice' => $saleDetailsUnitPrice, 'discount' => $saleDetailsDiscount, 'quantity' => $saleDetailsQuantity, 'customerName' => $saleDetailsCustomerName, 'customerID' => $customerID, 'reason' => $saleDetailsReason, 'saleID' => $saleDetailsSaleID, 'storeID' => $activeStoreID]);
 
 					echo '<div class="alert alert-success"><button type="button" class="close" data-dismiss="alert">&times;</button>Sale details updated.</div>';
 					exit();

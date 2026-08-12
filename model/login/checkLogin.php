@@ -3,6 +3,7 @@ session_start();
 require_once('../../inc/config/constants.php');
 require_once('../../inc/config/db.php');
 require_once('../../inc/auth.php');
+require_once('../../inc/store.php');
 
 ensureUserRoleColumn($conn);
 bootstrapFirstSuperAdmin($conn);
@@ -55,6 +56,7 @@ if (isset($_POST['loginUsername'])) {
 			$_SESSION['username'] = $row['username'];
 			$_SESSION['fullName'] = $row['fullName'];
 			$_SESSION['role'] = isset($row['role']) ? $row['role'] : 'admin';
+			ensureActiveStoreSession($conn);
 
 			echo '<div class="alert alert-success"><button type="button" class="close" data-dismiss="alert">&times;</button>Login success! Redirecting you to home page...</div>';
 			exit();

@@ -1,6 +1,11 @@
 <?php
+session_start();
 require_once('../../inc/config/constants.php');
 require_once('../../inc/config/db.php');
+require_once('../../inc/store.php');
+
+ensureActiveStoreSession($conn);
+$activeStoreID = (int) $_SESSION['activeStoreID'];
 
 $uPrice = 0;
 $qty = 0;
@@ -10,9 +15,9 @@ if (isset($_POST['startDate'])) {
 	$startDate = htmlentities($_POST['startDate']);
 	$endDate = htmlentities($_POST['endDate']);
 
-	$purchaseFilteredReportSql = 'SELECT p.*, COALESCE(i.unitAsSold, "pcs") AS unitAsSold FROM purchase p LEFT JOIN item i ON i.itemNumber = p.itemNumber WHERE p.purchaseDate BETWEEN :startDate AND :endDate';
+	$purchaseFilteredReportSql = 'SELECT p.*, COALESCE(i.unitAsSold, "pcs") AS unitAsSold FROM purchase p LEFT JOIN item i ON i.itemNumber = p.itemNumber AND i.storeID = p.storeID WHERE p.purchaseDate BETWEEN :startDate AND :endDate AND p.storeID = :storeID';
 	$purchaseFilteredReportStatement = $conn->prepare($purchaseFilteredReportSql);
-	$purchaseFilteredReportStatement->execute(['startDate' => $startDate, 'endDate' => $endDate]);
+	$purchaseFilteredReportStatement->execute(['startDate' => $startDate, 'endDate' => $endDate, 'storeID' => $activeStoreID]);
 
 	$output = '<table id="purchaseFilteredReportsTable" class="table table-sm table-striped table-bordered table-hover" style="width:100%">
 					<thead>

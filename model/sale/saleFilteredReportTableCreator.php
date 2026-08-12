@@ -1,6 +1,11 @@
 <?php
+session_start();
 require_once('../../inc/config/constants.php');
 require_once('../../inc/config/db.php');
+require_once('../../inc/store.php');
+
+ensureActiveStoreSession($conn);
+$activeStoreID = (int) $_SESSION['activeStoreID'];
 
 $uPrice = 0;
 $qty = 0;
@@ -10,9 +15,9 @@ if (isset($_POST['startDate'])) {
 	$startDate = htmlentities($_POST['startDate']);
 	$endDate = htmlentities($_POST['endDate']);
 
-	$saleFilteredReportSql = 'SELECT sh.saleReference, sh.customerID, sh.customerName, sh.saleDate, si.itemNumber, si.itemName, si.discount, si.quantity, si.unitPrice, si.reason, si.lineTotal FROM sale_headers sh LEFT JOIN sale_items si ON sh.saleReference = si.saleReference WHERE sh.saleDate BETWEEN :startDate AND :endDate ORDER BY sh.saleDate DESC, sh.id DESC, si.saleItemID ASC';
+	$saleFilteredReportSql = 'SELECT sh.saleReference, sh.customerID, sh.customerName, sh.saleDate, si.itemNumber, si.itemName, si.discount, si.quantity, si.unitPrice, si.reason, si.lineTotal FROM sale_headers sh LEFT JOIN sale_items si ON sh.saleReference = si.saleReference AND si.storeID = sh.storeID WHERE sh.saleDate BETWEEN :startDate AND :endDate AND sh.storeID = :storeID ORDER BY sh.saleDate DESC, sh.id DESC, si.saleItemID ASC';
 	$saleFilteredReportStatement = $conn->prepare($saleFilteredReportSql);
-	$saleFilteredReportStatement->execute(['startDate' => $startDate, 'endDate' => $endDate]);
+	$saleFilteredReportStatement->execute(['startDate' => $startDate, 'endDate' => $endDate, 'storeID' => $activeStoreID]);
 
 	$output = '<table id="saleFilteredReportsTable" class="table table-sm table-striped table-bordered table-hover" style="width:100%">
 					<thead>

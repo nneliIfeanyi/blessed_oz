@@ -1,12 +1,15 @@
 <?php
-	require_once('../../inc/config/constants.php');
-	require_once('../../inc/config/db.php');
-	
-	$sql = "SELECT MAX(vendorID) FROM vendor";
-	$stmt = $conn->prepare($sql);
-	$stmt->execute();
-	$row = $stmt->fetch(PDO::FETCH_ASSOC);
-	
-	echo $row['MAX(vendorID)'];
-	$stmt->closeCursor();
-?>
+session_start();
+require_once('../../inc/config/constants.php');
+require_once('../../inc/config/db.php');
+require_once('../../inc/store.php');
+ensureActiveStoreSession($conn);
+$activeStoreID = (int) $_SESSION['activeStoreID'];
+
+$sql = "SELECT MAX(vendorID) FROM vendor WHERE storeID = :storeID";
+$stmt = $conn->prepare($sql);
+$stmt->execute(['storeID' => $activeStoreID]);
+$row = $stmt->fetch(PDO::FETCH_ASSOC);
+
+echo isset($row['MAX(vendorID)']) ? $row['MAX(vendorID)'] : 0;
+$stmt->closeCursor();

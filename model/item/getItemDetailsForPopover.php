@@ -1,6 +1,11 @@
 <?php
+session_start();
 require_once('../../inc/config/constants.php');
 require_once('../../inc/config/db.php');
+require_once('../../inc/store.php');
+
+ensureActiveStoreSession($conn);
+$activeStoreID = (int) $_SESSION['activeStoreID'];
 
 if (isset($_POST['id'])) {
 
@@ -11,9 +16,9 @@ if (isset($_POST['id'])) {
 	$defaultImgFolder = 'data/item_images/';
 
 	// Get all item details
-	$sql = 'SELECT * FROM item WHERE productID = :productID';
+	$sql = 'SELECT * FROM item WHERE productID = :productID AND storeID = :storeID';
 	$stmt = $conn->prepare($sql);
-	$stmt->execute(['productID' => $productID]);
+	$stmt->execute(['productID' => $productID, 'storeID' => $activeStoreID]);
 
 	while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
 		$output = '<p><img src="';

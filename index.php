@@ -8,7 +8,11 @@ if (!isset($_SESSION['loggedIn'])) {
 
 require_once('inc/config/constants.php');
 require_once('inc/config/db.php');
+require_once('inc/store.php');
 require_once('inc/header.html');
+
+ensureActiveStoreSession($conn);
+$activeStoreID = (int) $_SESSION['activeStoreID'];
 
 $settingsFile = 'inc/config/site_settings.json';
 $settings = [
@@ -42,30 +46,42 @@ $dashboardMovements = array();
 $dashboardMovementError = '';
 
 try {
-	$dashboardStockValueStatement = $conn->query('SELECT COALESCE(SUM(stock * unitPrice), 0) FROM item');
+	$dashboardStockValueStatement = $conn->prepare('SELECT COALESCE(SUM(stock * unitPrice), 0) FROM item WHERE storeID = :storeID');
+	$dashboardStockValueStatement->execute(['storeID' => $activeStoreID]);
 	$dashboardSummary['currentStockValue'] = (float) $dashboardStockValueStatement->fetchColumn();
 
-	$dashboardSalesStatement = $conn->query('SELECT COALESCE(SUM(lineTotal), 0) FROM sale_items');
+	$dashboardSalesStatement = $conn->prepare('SELECT COALESCE(SUM(lineTotal), 0) FROM sale_items WHERE storeID = :storeID');
+	$dashboardSalesStatement->execute(['storeID' => $activeStoreID]);
 	$dashboardSummary['totalSales'] = (float) $dashboardSalesStatement->fetchColumn();
 
-	$dashboardPurchasesStatement = $conn->query('SELECT COALESCE(SUM(quantity * unitPrice), 0) FROM purchase');
+	$dashboardPurchasesStatement = $conn->prepare('SELECT COALESCE(SUM(quantity * unitPrice), 0) FROM purchase WHERE storeID = :storeID');
+	$dashboardPurchasesStatement->execute(['storeID' => $activeStoreID]);
 	$dashboardSummary['totalPurchases'] = (float) $dashboardPurchasesStatement->fetchColumn();
 
-	$dashboardCreditsStatement = $conn->query('SELECT COALESCE(SUM(balanceAfter), 0) FROM (SELECT customerID, balanceAfter FROM customer_ledger WHERE ledgerID IN (SELECT MAX(ledgerID) FROM customer_ledger GROUP BY customerID)) AS latestBalances');
+	$dashboardCreditsStatement = $conn->prepare('SELECT COALESCE(SUM(outstandingBalance), 0) FROM (
+		SELECT ROUND(GREATEST(COALESCE(SUM(si.lineTotal), 0) - COALESCE(sh.amountPaid, 0), 0), 2) AS outstandingBalance
+		FROM sale_headers sh
+		LEFT JOIN sale_items si ON si.saleReference = sh.saleReference AND si.storeID = sh.storeID
+		WHERE sh.storeID = :storeID
+		GROUP BY sh.id, sh.amountPaid
+	) AS creditTotals');
+	$dashboardCreditsStatement->execute(['storeID' => $activeStoreID]);
 	$dashboardSummary['totalCredits'] = (float) $dashboardCreditsStatement->fetchColumn();
 
 	$dashboardMovementSql = 'SELECT movementType, movementDate, itemNumber, itemName, quantity, unitPrice, referenceName, reason, direction FROM (
-		SELECT "Purchase" AS movementType, purchaseDate AS movementDate, itemNumber, itemName, quantity, unitPrice, vendorName AS referenceName, "" AS reason, "In" AS direction, purchaseID AS movementSequence FROM purchase
+		SELECT "Purchase" AS movementType, purchaseDate AS movementDate, itemNumber, itemName, quantity, unitPrice, vendorName AS referenceName, "" AS reason, "In" AS direction, purchaseID AS movementSequence FROM purchase WHERE storeID = :purchaseStoreID
 		UNION ALL
 		SELECT "Stock Out" AS movementType, sh.saleDate AS movementDate, si.itemNumber, si.itemName, si.quantity, si.unitPrice, COALESCE(sh.customerName, "") AS referenceName, COALESCE(si.reason, "Sales") AS reason, "Out" AS direction, si.saleItemID AS movementSequence
 		FROM sale_items si
 		LEFT JOIN sale_headers sh ON sh.saleReference = si.saleReference
+		WHERE si.storeID = :saleItemsStoreID
 		UNION ALL
-		SELECT "Stock Out" AS movementType, saleDate AS movementDate, itemNumber, itemName, quantity, unitPrice, customerName AS referenceName, reason, "Out" AS direction, saleID AS movementSequence FROM sale
+		SELECT "Stock Out" AS movementType, saleDate AS movementDate, itemNumber, itemName, quantity, unitPrice, customerName AS referenceName, reason, "Out" AS direction, saleID AS movementSequence FROM sale WHERE storeID = :saleStoreID
 	) AS movementLog
 	ORDER BY movementDate DESC, movementSequence DESC
 	';
-	$dashboardMovementStatement = $conn->query($dashboardMovementSql);
+	$dashboardMovementStatement = $conn->prepare($dashboardMovementSql);
+	$dashboardMovementStatement->execute(['purchaseStoreID' => $activeStoreID, 'saleItemsStoreID' => $activeStoreID, 'saleStoreID' => $activeStoreID]);
 	$dashboardMovements = $dashboardMovementStatement->fetchAll(PDO::FETCH_ASSOC);
 } catch (PDOException $e) {
 	$dashboardMovementError = 'Dashboard data is unavailable right now.';
@@ -187,24 +203,22 @@ try {
 										<!-- Div to show the ajax message from validations/db submission -->
 										<div id="itemDetailsMessage"></div>
 										<form>
-											<div class="form-row">
-												<div class="form-group col-md-3" style="display:inline-block">
+											<div class="form-row compact-form-row align-items-end">
+												<div class="form-group col-lg-2 col-md-4" style="display:inline-block">
 													<label for="itemDetailsItemNumber">Item Number<span class="requiredIcon">*</span></label>
 													<input type="text" class="form-control" name="itemDetailsItemNumber" id="itemDetailsItemNumber" autocomplete="off">
 													<div id="itemDetailsItemNumberSuggestionsDiv" class="customListDivWidth"></div>
 												</div>
-												<div class="form-group col-md-3">
+												<div class="form-group col-lg-2 col-md-4">
 													<label for="itemDetailsProductID">Product ID</label>
 													<input class="form-control invTooltip" type="number" readonly id="itemDetailsProductID" name="itemDetailsProductID" title="This will be auto-generated when you add a new item">
 												</div>
-											</div>
-											<div class="form-row">
-												<div class="form-group col-md-6">
+												<div class="form-group col-lg-4 col-md-8">
 													<label for="itemDetailsItemName">Item Name<span class="requiredIcon">*</span></label>
 													<input type="text" class="form-control" name="itemDetailsItemName" id="itemDetailsItemName" autocomplete="off">
 													<div id="itemDetailsItemNameSuggestionsDiv" class="customListDivWidth"></div>
 												</div>
-												<div class="form-group col-md-3">
+												<div class="form-group col-lg-2 col-md-4">
 													<label for="itemDetailsUnitAsSold">Unit Sold As</label>
 													<select class="form-control chosenSelect" name="itemDetailsUnitAsSold" id="itemDetailsUnitAsSold">
 														<option value="pcs">pcs</option>
@@ -224,39 +238,39 @@ try {
 														<option value="yard">yard</option>
 													</select>
 												</div>
-												<div class="form-group col-md-2">
+												<div class="form-group col-lg-2 col-md-4">
 													<label for="itemDetailsStatus">Status</label>
 													<select id="itemDetailsStatus" name="itemDetailsStatus" class="form-control chosenSelect">
 														<?php include('inc/statusList.html'); ?>
 													</select>
 												</div>
 											</div>
-											<div class="form-row">
-												<div class="form-group col-md-6" style="display:inline-block">
-													<?php if (!empty($settings['enableProductDescription'])) { ?>
-														<textarea rows="4" class="form-control" placeholder="Description" name="itemDetailsDescription" id="itemDetailsDescription"></textarea>
-													<?php } ?>
-												</div>
-											</div>
-											<div class="form-row">
-												<div class="form-group col-md-3">
+											<div class="form-row compact-form-row align-items-end">
+												<div class="form-group col-lg-2 col-md-4">
 													<label for="itemDetailsDiscount">Discount %</label>
 													<input type="text" class="form-control" value="0" name="itemDetailsDiscount" id="itemDetailsDiscount">
 												</div>
-												<div class="form-group col-md-3">
+												<div class="form-group col-lg-2 col-md-4">
 													<label for="itemDetailsQuantity">Initial Stock</label>
 													<input type="number" class="form-control" value="0" name="itemDetailsQuantity" id="itemDetailsQuantity" title="Used only when creating a new item">
 												</div>
-												<div class="form-group col-md-3">
+												<div class="form-group col-lg-2 col-md-4">
 													<label for="itemDetailsUnitPrice">Unit Price<span class="requiredIcon">*</span></label>
 													<input type="text" class="form-control" value="0" name="itemDetailsUnitPrice" id="itemDetailsUnitPrice">
 												</div>
-												<div class="form-group col-md-3">
+												<div class="form-group col-lg-2 col-md-4">
 													<label for="itemDetailsTotalStock">Current Stock</label>
 													<input type="text" class="form-control" name="itemDetailsTotalStock" id="itemDetailsTotalStock" readonly>
 												</div>
-												<div class="form-group col-md-3">
+												<div class="form-group col-lg-3 col-md-8 compact-image-slot">
 													<div id="imageContainer"></div>
+												</div>
+											</div>
+											<div class="form-row">
+												<div class="form-group col-lg-9 col-md-12" style="display:inline-block">
+													<?php if (!empty($settings['enableProductDescription'])) { ?>
+														<textarea rows="4" class="form-control" placeholder="Description" name="itemDetailsDescription" id="itemDetailsDescription"></textarea>
+													<?php } ?>
 												</div>
 											</div>
 											<button type="button" id="addItem" class="btn btn-success">Add Item</button>
@@ -311,7 +325,7 @@ try {
 									<div class="form-row">
 										<div class="form-group col-md-3">
 											<label for="purchaseDetailsPurchaseDate">Purchase Date<span class="requiredIcon">*</span></label>
-											<input type="text" class="form-control datepicker" id="purchaseDetailsPurchaseDate" name="purchaseDetailsPurchaseDate" readonly value="2018-05-24">
+											<input type="text" class="form-control datepicker" id="purchaseDetailsPurchaseDate" name="purchaseDetailsPurchaseDate" readonly value="<?php echo date('Y-m-d'); ?>">
 										</div>
 										<div class="form-group col-md-3">
 											<label for="purchaseDetailsPurchaseID">Transaction ID</label>
@@ -400,28 +414,22 @@ try {
 							<div class="card-body">
 								<div id="saleDetailsMessage"></div>
 								<form>
-									<div class="form-row">
-										<div class="form-group col-md-3">
+									<input type="hidden" id="saleDetailsSaleID" name="saleDetailsSaleID" value="">
+									<div class="form-row compact-form-row align-items-end">
+										<div class="form-group col-lg-2 col-md-4">
 											<label for="saleDetailsCustomerID">Customer ID<span class="requiredIcon">*</span></label>
 											<input type="text" class="form-control" id="saleDetailsCustomerID" name="saleDetailsCustomerID" autocomplete="off">
 											<div id="saleDetailsCustomerIDSuggestionsDiv" class="customListDivWidth"></div>
 										</div>
-										<div class="form-group col-md-4">
+										<div class="form-group col-lg-3 col-md-8">
 											<label for="saleDetailsCustomerName">Customer Name</label>
 											<input type="text" class="form-control" id="saleDetailsCustomerName" name="saleDetailsCustomerName" readonly>
 										</div>
-										<div class="form-group col-md-3">
+										<div class="form-group col-lg-3 col-md-4">
 											<label for="saleDetailsSaleDate">Sale Date<span class="requiredIcon">*</span></label>
-											<input type="text" class="form-control datepicker" id="saleDetailsSaleDate" value="2018-05-24" name="saleDetailsSaleDate" readonly>
+											<input type="text" class="form-control datepicker" id="saleDetailsSaleDate" value="<?php echo date('Y-m-d'); ?>" name="saleDetailsSaleDate" readonly>
 										</div>
-										<div class="form-group col-md-2">
-											<label for="saleDetailsSaleID">Transaction ID</label>
-											<input type="text" class="form-control invTooltip" id="saleDetailsSaleID" name="saleDetailsSaleID" value="Auto-generated after save" title="This will be auto-generated when you save a transaction" autocomplete="off" readonly>
-											<div id="saleDetailsSaleIDSuggestionsDiv" class="customListDivWidth"></div>
-										</div>
-									</div>
-									<div class="form-row">
-										<div class="form-group col-md-3">
+										<div class="form-group col-lg-4 col-md-4">
 											<label for="saleDetailsAmountPaid">Initial Amount Paid</label>
 											<input type="number" class="form-control" id="saleDetailsAmountPaid" name="saleDetailsAmountPaid" value="0">
 										</div>
@@ -472,7 +480,7 @@ try {
 									</div>
 									<div class="form-group col-md-2">
 										<label for="creditPaymentDate">Payment Date</label>
-										<input type="text" class="form-control datepicker" id="creditPaymentDate" name="creditPaymentDate" readonly value="2018-05-24">
+										<input type="text" class="form-control datepicker" id="creditPaymentDate" name="creditPaymentDate" readonly value="<?php echo date('Y-m-d'); ?>">
 									</div>
 									<div class="form-group col-md-2">
 										<label for="creditPaymentMethod">Method</label>
@@ -524,39 +532,35 @@ try {
 								<!-- Div to show the ajax message from validations/db submission -->
 								<div id="customerDetailsMessage"></div>
 								<form>
-									<div class="form-row">
-										<div class="form-group col-md-6">
+									<div class="form-row compact-form-row align-items-end">
+										<div class="form-group col-lg-3 col-md-6">
 											<label for="customerDetailsCustomerFullName">Full Name<span class="requiredIcon">*</span></label>
 											<input type="text" class="form-control" id="customerDetailsCustomerFullName" name="customerDetailsCustomerFullName">
 										</div>
-										<div class="form-group col-md-2">
+										<div class="form-group col-lg-2 col-md-3">
 											<label for="customerDetailsStatus">Status</label>
 											<select id="customerDetailsStatus" name="customerDetailsStatus" class="form-control chosenSelect">
 												<?php include('inc/statusList.html'); ?>
 											</select>
 										</div>
-										<div class="form-group col-md-3">
+										<div class="form-group col-lg-2 col-md-3">
 											<label for="customerDetailsCustomerID">Customer ID</label>
 											<input type="text" class="form-control invTooltip" id="customerDetailsCustomerID" name="customerDetailsCustomerID" title="This will be auto-generated when you add a new customer" autocomplete="off">
 											<div id="customerDetailsCustomerIDSuggestionsDiv" class="customListDivWidth"></div>
 										</div>
-									</div>
-									<div class="form-row">
-										<div class="form-group col-md-6">
+										<div class="form-group col-lg-2 col-md-6">
 											<label for="customerDetailsCustomerMobile">Phone (mobile)<span class="requiredIcon">*</span></label>
 											<input type="text" class="form-control invTooltip" id="customerDetailsCustomerMobile" name="customerDetailsCustomerMobile" title="Do not enter leading 0">
 										</div>
-										<div class="form-group col-md-6">
+										<div class="form-group col-lg-3 col-md-6">
 											<label for="customerDetailsCustomerEmail">Email</label>
 											<input type="email" class="form-control" id="customerDetailsCustomerEmail" name="customerDetailsCustomerEmail">
 										</div>
-									</div>
-									<div class="form-group">
-										<label for="customerDetailsCustomerAddress">Address<span class="requiredIcon">*</span></label>
-										<input type="text" class="form-control" id="customerDetailsCustomerAddress" name="customerDetailsCustomerAddress">
-									</div>
-									<div class="form-row">
-										<div class="form-group col-md-8">
+										<div class="form-group col-lg-4 col-md-8">
+											<label for="customerDetailsCustomerAddress">Address<span class="requiredIcon">*</span></label>
+											<input type="text" class="form-control" id="customerDetailsCustomerAddress" name="customerDetailsCustomerAddress">
+										</div>
+										<div class="form-group col-lg-3 col-md-4">
 											<label for="customerDetailsCustomerDistrict">District</label>
 											<select id="customerDetailsCustomerDistrict" name="customerDetailsCustomerDistrict" class="form-control chosenSelect">
 												<?php include('inc/districtList.html'); ?>
@@ -668,11 +672,11 @@ try {
 											<div class="form-row">
 												<div class="form-group col-md-3">
 													<label for="saleReportStartDate">Start Date</label>
-													<input type="text" class="form-control datepicker" id="saleReportStartDate" value="2018-05-24" name="saleReportStartDate" readonly>
+													<input type="text" class="form-control datepicker" id="saleReportStartDate" value="<?php echo date('Y-m-d'); ?>" name="saleReportStartDate" readonly>
 												</div>
 												<div class="form-group col-md-3">
 													<label for="saleReportEndDate">End Date</label>
-													<input type="text" class="form-control datepicker" id="saleReportEndDate" value="2018-05-24" name="saleReportEndDate" readonly>
+													<input type="text" class="form-control datepicker" id="saleReportEndDate" value="<?php echo date('Y-m-d'); ?>" name="saleReportEndDate" readonly>
 												</div>
 											</div>
 											<button type="button" id="showSaleReport" class="btn btn-dark">Show Report</button>
@@ -688,11 +692,11 @@ try {
 											<div class="form-row">
 												<div class="form-group col-md-3">
 													<label for="purchaseReportStartDate">Start Date</label>
-													<input type="text" class="form-control datepicker" id="purchaseReportStartDate" value="2018-05-24" name="purchaseReportStartDate" readonly>
+													<input type="text" class="form-control datepicker" id="purchaseReportStartDate" value="<?php echo date('Y-m-d'); ?>" name="purchaseReportStartDate" readonly>
 												</div>
 												<div class="form-group col-md-3">
 													<label for="purchaseReportEndDate">End Date</label>
-													<input type="text" class="form-control datepicker" id="purchaseReportEndDate" value="2018-05-24" name="purchaseReportEndDate" readonly>
+													<input type="text" class="form-control datepicker" id="purchaseReportEndDate" value="<?php echo date('Y-m-d'); ?>" name="purchaseReportEndDate" readonly>
 												</div>
 											</div>
 											<button type="button" id="showPurchaseReport" class="btn btn-dark">Show Report</button>

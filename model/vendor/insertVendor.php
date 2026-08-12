@@ -1,6 +1,11 @@
 <?php
+session_start();
 require_once('../../inc/config/constants.php');
 require_once('../../inc/config/db.php');
+require_once('../../inc/store.php');
+
+ensureActiveStoreSession($conn);
+$activeStoreID = (int) $_SESSION['activeStoreID'];
 
 if (isset($_POST['vendorDetailsStatus'])) {
 	$fullName = trim(htmlentities($_POST['vendorDetailsVendorFullName']));
@@ -26,9 +31,9 @@ if (isset($_POST['vendorDetailsStatus'])) {
 	}
 	// Check if the vendor already exists
 	try {
-		$checkVendorSql = 'SELECT * FROM vendor WHERE fullName = :fullName AND mobile = :mobile';
+		$checkVendorSql = 'SELECT * FROM vendor WHERE fullName = :fullName AND mobile = :mobile AND storeID = :storeID';
 		$checkVendorStatement = $conn->prepare($checkVendorSql);
-		$checkVendorStatement->execute(['fullName' => $fullName, 'mobile' => $mobile]);
+		$checkVendorStatement->execute(['fullName' => $fullName, 'mobile' => $mobile, 'storeID' => $activeStoreID]);
 
 		if ($checkVendorStatement->rowCount() > 0) {
 			echo 'A vendor with the same name and mobile number already exists.';
@@ -40,9 +45,10 @@ if (isset($_POST['vendorDetailsStatus'])) {
 	}
 
 	try {
-		$insertVendorSql = 'INSERT INTO vendor (fullName, email, mobile, address, district, status) VALUES (:fullName, :email, :mobile, :address, :district, :status)';
+		$insertVendorSql = 'INSERT INTO vendor (storeID, fullName, email, mobile, address, district, status) VALUES (:storeID, :fullName, :email, :mobile, :address, :district, :status)';
 		$insertVendorStatement = $conn->prepare($insertVendorSql);
 		$insertVendorStatement->execute([
+			'storeID' => $activeStoreID,
 			'fullName' => $fullName,
 			'email' => $email,
 			'mobile' => $mobile,

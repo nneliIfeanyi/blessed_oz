@@ -575,6 +575,7 @@ $(document).ready(function () {
 	// Initiate datepickers
 	$('.datepicker').datepicker({
 		format: 'yyyy-mm-dd',
+		autoclose: true,
 		todayHighlight: true,
 		todayBtn: 'linked',
 		orientation: 'bottom left'
@@ -751,7 +752,7 @@ function showToastMessage(message, messageDivID, fallbackType) {
 		setTimeout(function () {
 			toast.remove();
 		}, 300);
-	}, 30000);
+	}, 15000);
 }
 
 
@@ -1259,8 +1260,17 @@ function addVendor() {
 }
 
 
+
+var isAddItemSubmitInProgress = false;
+var isUpdateItemSubmitInProgress = false;
+
 // Function to call the insertItem.php script to insert item data to db
 function addItem() {
+	if (isAddItemSubmitInProgress) {
+		showToastMessage('Item is already being saved. Please wait.', 'itemDetailsMessage');
+		return;
+	}
+
 	var itemDetailsItemNumber = $('#itemDetailsItemNumber').val();
 	var itemDetailsItemName = $('#itemDetailsItemName').val();
 	var itemDetailsUnitAsSold = $('#itemDetailsUnitAsSold').val();
@@ -1269,6 +1279,12 @@ function addItem() {
 	var itemDetailsUnitPrice = $('#itemDetailsUnitPrice').val();
 	var itemDetailsStatus = $('#itemDetailsStatus').val();
 	var itemDetailsDescription = $('#itemDetailsDescription').val();
+	var $addItemButton = $('#addItem');
+	var originalButtonText = $addItemButton.data('original-text') || $addItemButton.text();
+	var wasSuccessful = false;
+	$addItemButton.data('original-text', originalButtonText);
+	isAddItemSubmitInProgress = true;
+	$addItemButton.prop('disabled', true).text('Saving...');
 
 	$.ajax({
 		url: 'model/item/insertItem.php',
@@ -1284,9 +1300,40 @@ function addItem() {
 			itemDetailsDescription: itemDetailsDescription,
 		},
 		success: function (data) {
-			showToastMessage(data, 'itemDetailsMessage');
+			var result = data;
+			if (typeof data === 'string') {
+				try {
+					result = $.parseJSON(data);
+				} catch (e) {
+					showToastMessage(data, 'itemDetailsMessage');
+					return;
+				}
+			}
+
+			showToastMessage(result, 'itemDetailsMessage');
+			if (result && result.success !== undefined) {
+				wasSuccessful = !!result.success;
+			} else if (typeof data === 'string' && data.toLowerCase().indexOf('success') !== -1) {
+				wasSuccessful = true;
+			}
+		},
+		error: function () {
+			showToastMessage('Unable to save item right now.', 'itemDetailsMessage');
 		},
 		complete: function () {
+			isAddItemSubmitInProgress = false;
+			$addItemButton.prop('disabled', false).text(originalButtonText);
+
+			if (wasSuccessful) {
+				var itemForm = $addItemButton.closest('form').get(0);
+				if (itemForm) {
+					itemForm.reset();
+				}
+				$('#itemDetailsUnitAsSold').trigger('chosen:updated');
+				$('#itemDetailsStatus').trigger('chosen:updated');
+				$('#imageContainer').empty();
+			}
+
 			populateLastInsertedID(itemLastInsertedIDFile, 'itemDetailsProductID');
 			getItemStockToPopulate('itemDetailsItemNumber', getItemStockFile, itemDetailsTotalStock);
 			searchTableCreator('itemDetailsTableDiv', itemDetailsSearchTableCreatorFile, 'itemDetailsTable');
@@ -1307,7 +1354,7 @@ function addPurchaseItemRow() {
 		'<input type="text" class="form-control purchase-item-number" name="purchaseItems[' + rowIndex + '][itemNumber]" autocomplete="off">' +
 		'<div class="purchase-item-number-suggestions"></div>' +
 		'</div>' +
-		'<div class="form-group col-md-3">' +
+		'<div class="form-group col-md-4">' +
 		'<label>Item Name</label>' +
 		'<input type="text" class="form-control purchase-item-name" name="purchaseItems[' + rowIndex + '][itemName]" readonly>' +
 		'</div>' +
@@ -1315,13 +1362,13 @@ function addPurchaseItemRow() {
 		'<label>Quantity<span class="requiredIcon">*</span></label>' +
 		'<input type="number" class="form-control purchase-item-quantity" name="purchaseItems[' + rowIndex + '][quantity]" value="1">' +
 		'</div>' +
-		'<div class="form-group col-md-1">' +
-		'<label>Unit</label>' +
-		'<input type="text" class="form-control purchase-item-unit" name="purchaseItems[' + rowIndex + '][unitAsSold]" readonly>' +
-		'</div>' +
-		'<div class="form-group col-md-2">' +
+		'<div class="form-group col-md-2 unit-price-group">' +
 		'<label>Unit Price<span class="requiredIcon">*</span></label>' +
+		'<input type="hidden" class="purchase-item-unit" name="purchaseItems[' + rowIndex + '][unitAsSold]" value="pcs">' +
+		'<div class="input-group unit-price-inline-wrap">' +
 		'<input type="text" class="form-control purchase-item-unit-price" name="purchaseItems[' + rowIndex + '][unitPrice]" value="0">' +
+		'<div class="input-group-append"><span class="input-group-text unit-badge-inline purchase-item-unit-badge">pcs</span></div>' +
+		'</div>' +
 		'</div>' +
 		'<div class="form-group col-md-2">' +
 		'<label>Current Stock</label>' +
@@ -1382,7 +1429,9 @@ function populatePurchaseItemRowDetails(row) {
 		dataType: 'json',
 		success: function (data) {
 			row.find('.purchase-item-name').val(data.itemName || '');
-			row.find('.purchase-item-unit').val(data.unitAsSold || '');
+			var purchaseUnit = data.unitAsSold || 'pcs';
+			row.find('.purchase-item-unit').val(purchaseUnit);
+			row.find('.purchase-item-unit-badge').text(purchaseUnit);
 			row.find('.purchase-item-stock').val(data.stock || '');
 			if (data.unitPrice !== undefined) {
 				row.find('.purchase-item-unit-price').val(data.unitPrice);
@@ -1398,10 +1447,22 @@ function calculatePurchaseItemRowTotal(row) {
 	row.find('.purchase-item-total').val((unitPrice * quantity).toFixed(2));
 }
 
+var isPurchaseSubmitInProgress = false;
+var isCreditPaymentSubmitInProgress = false;
+
 function addPurchase() {
+	if (isPurchaseSubmitInProgress) {
+		showToastMessage('Purchase is already being saved. Please wait.', 'purchaseDetailsMessage');
+		return;
+	}
+
 	var purchaseDetailsPurchaseDate = $('#purchaseDetailsPurchaseDate').val();
 	var purchaseDetailsVendorName = $('#purchaseDetailsVendorName').val();
 	var purchaseItems = [];
+	var $addPurchaseButton = $('#addPurchase');
+	var originalButtonText = $addPurchaseButton.data('original-text') || $addPurchaseButton.text();
+	var wasSuccessful = false;
+	$addPurchaseButton.data('original-text', originalButtonText);
 
 	$('.purchase-item-row').each(function () {
 		var row = $(this);
@@ -1419,6 +1480,9 @@ function addPurchase() {
 		return;
 	}
 
+	isPurchaseSubmitInProgress = true;
+	$addPurchaseButton.prop('disabled', true).text('Saving...');
+
 	$.ajax({
 		url: 'model/purchase/insertPurchase.php',
 		method: 'POST',
@@ -1432,6 +1496,9 @@ function addPurchase() {
 				var result = typeof data === 'string' ? $.parseJSON(data) : data;
 				if (result && result.success !== undefined) {
 					showToastMessage(result.message || 'Purchase saved successfully.', 'purchaseDetailsMessage');
+					if (result.success) {
+						wasSuccessful = true;
+					}
 				} else {
 					showToastMessage(data, 'purchaseDetailsMessage');
 				}
@@ -1439,7 +1506,20 @@ function addPurchase() {
 				showToastMessage(data, 'purchaseDetailsMessage');
 			}
 		},
+		error: function () {
+			showToastMessage('Unable to save purchase right now.', 'purchaseDetailsMessage');
+		},
 		complete: function () {
+			isPurchaseSubmitInProgress = false;
+			$addPurchaseButton.prop('disabled', false).text(originalButtonText);
+
+			if (wasSuccessful) {
+				var purchaseForm = $addPurchaseButton.closest('form').get(0);
+				if (purchaseForm) {
+					purchaseForm.reset();
+				}
+			}
+
 			populateLastInsertedID(purchaseLastInsertedIDFile, 'purchaseDetailsPurchaseID');
 			searchTableCreator('purchaseDetailsTableDiv', purchaseDetailsSearchTableCreatorFile, 'purchaseDetailsTable');
 			reportsPurchaseTableCreator('purchaseReportsTableDiv', purchaseReportsSearchTableCreatorFile, 'purchaseReportsTable');
@@ -1456,34 +1536,26 @@ function addSaleItemRow() {
 	var rowHtml = '<div class="sale-item-row border rounded p-3 mb-3 position-relative">' +
 		'<button type="button" class="remove-row-icon remove-sale-item-row" title="Remove item" aria-label="Remove item">&times;</button>' +
 		'<div class="form-row">' +
-		'<div class="form-group col-md-2">' +
+		'<div class="form-group col-md-3">' +
 		'<label>Item Number<span class="requiredIcon">*</span></label>' +
 		'<input type="text" class="form-control sale-item-number" name="saleItems[' + rowIndex + '][itemNumber]" autocomplete="off">' +
 		'<div class="sale-item-number-suggestions"></div>' +
-		'</div>' +
-		'<div class="form-group col-md-3">' +
-		'<label>Item Name</label>' +
-		'<input type="text" class="form-control sale-item-name" name="saleItems[' + rowIndex + '][itemName]" readonly>' +
+		'<input type="hidden" class="sale-item-name" name="saleItems[' + rowIndex + '][itemName]">' +
 		'</div>' +
 		'<div class="form-group col-md-2">' +
 		'<label>Quantity<span class="requiredIcon">*</span></label>' +
 		'<input type="number" class="form-control sale-item-quantity" name="saleItems[' + rowIndex + '][quantity]" value="1">' +
 		'</div>' +
-		'<div class="form-group col-md-1">' +
-		'<label>Unit</label>' +
-		'<input type="text" class="form-control sale-item-unit" name="saleItems[' + rowIndex + '][unitAsSold]" readonly>' +
-		'</div>' +
-		'<div class="form-group col-md-2">' +
+		'<div class="form-group col-md-2 unit-price-group">' +
 		'<label>Unit Price<span class="requiredIcon">*</span></label>' +
+		'<input type="hidden" class="sale-item-unit" name="saleItems[' + rowIndex + '][unitAsSold]" value="pcs">' +
+		'<input type="hidden" class="sale-item-discount" name="saleItems[' + rowIndex + '][discount]" value="0">' +
+		'<div class="input-group unit-price-inline-wrap">' +
 		'<input type="text" class="form-control sale-item-unit-price" name="saleItems[' + rowIndex + '][unitPrice]" value="0">' +
-		'</div>' +
-		'<div class="form-group col-md-2">' +
-		'<label>Discount %</label>' +
-		'<input type="text" class="form-control sale-item-discount" name="saleItems[' + rowIndex + '][discount]" value="0">' +
+		'<div class="input-group-append"><span class="input-group-text unit-badge-inline sale-item-unit-badge"></span></div>' +
 		'</div>' +
 		'</div>' +
-		'<div class="form-row">' +
-		'<div class="form-group col-md-2">' +
+		'<div class="form-group col-md-1">' +
 		'<label>Reason</label>' +
 		'<select class="form-control sale-item-reason" name="saleItems[' + rowIndex + '][reason]">' +
 		'<option value="Sales">Sales</option><option value="Damaged">Damaged</option><option value="Gifted">Gifted</option><option value="Expired">Expired</option><option value="Returned">Returned</option><option value="Other">Other</option>' +
@@ -1546,7 +1618,9 @@ function populateSaleItemRowDetails(row) {
 		dataType: 'json',
 		success: function (data) {
 			row.find('.sale-item-name').val(data.itemName || '');
-			row.find('.sale-item-unit').val(data.unitAsSold || '');
+			var saleUnit = data.unitAsSold || 'pcs';
+			row.find('.sale-item-unit').val(saleUnit);
+			row.find('.sale-item-unit-badge').text(saleUnit);
 			row.find('.sale-item-stock').val(data.stock || '');
 			if (data.unitPrice !== undefined) {
 				row.find('.sale-item-unit-price').val(data.unitPrice);
@@ -1566,12 +1640,23 @@ function calculateSaleItemRowTotal(row) {
 	row.find('.sale-item-total').val((unitPrice * ((100 - discount) / 100) * quantity).toFixed(2));
 }
 
+var isSaleSubmitInProgress = false;
+
 function addSale() {
+	if (isSaleSubmitInProgress) {
+		showToastMessage('Stock out is already being saved. Please wait.', 'saleDetailsMessage');
+		return;
+	}
+
 	var saleDetailsCustomerID = $('#saleDetailsCustomerID').val();
 	var saleDetailsCustomerName = $('#saleDetailsCustomerName').val();
 	var saleDetailsSaleDate = $('#saleDetailsSaleDate').val();
 	var saleDetailsAmountPaid = $('#saleDetailsAmountPaid').val();
 	var saleItems = [];
+	var $addSaleButton = $('#addSaleButton');
+	var originalButtonText = $addSaleButton.data('original-text') || $addSaleButton.text();
+	var wasSuccessful = false;
+	$addSaleButton.data('original-text', originalButtonText);
 
 	$('.sale-item-row').each(function () {
 		var row = $(this);
@@ -1591,6 +1676,9 @@ function addSale() {
 		return;
 	}
 
+	isSaleSubmitInProgress = true;
+	$addSaleButton.prop('disabled', true).text('Saving...');
+
 	$.ajax({
 		url: 'model/sale/insertSale.php',
 		method: 'POST',
@@ -1602,17 +1690,43 @@ function addSale() {
 			saleItems: JSON.stringify(saleItems)
 		},
 		success: function (data) {
-			var result = typeof data === 'string' ? $.parseJSON(data) : data;
+			var result = data;
+			if (typeof data === 'string') {
+				try {
+					result = $.parseJSON(data);
+				} catch (e) {
+					showToastMessage('Unable to save stock out right now.', 'saleDetailsMessage');
+					return;
+				}
+			}
+
 			if (result && result.success !== undefined) {
 				showToastMessage(result.message || 'Stock out saved successfully.', 'saleDetailsMessage');
 				if (result.saleReference) {
 					$('#saleDetailsSaleID').val(result.saleReference);
 				}
+				if (result.success) {
+					wasSuccessful = true;
+				}
 			} else {
 				showToastMessage(data, 'saleDetailsMessage');
 			}
 		},
+		error: function () {
+			showToastMessage('Unable to save stock out right now.', 'saleDetailsMessage');
+		},
 		complete: function () {
+			isSaleSubmitInProgress = false;
+			$addSaleButton.prop('disabled', false).text(originalButtonText);
+
+			if (wasSuccessful) {
+				var saleForm = $addSaleButton.closest('form').get(0);
+				if (saleForm) {
+					saleForm.reset();
+				}
+				$('#saleDetailsImageContainer').empty();
+			}
+
 			populateLastInsertedID(saleLastInsertedIDFile, 'saleDetailsSaleID');
 			searchTableCreator('saleDetailsTableDiv', saleDetailsSearchTableCreatorFile, 'saleDetailsTable');
 			reportsSaleTableCreator('saleReportsTableDiv', saleReportsSearchTableCreatorFile, 'saleReportsTable');
@@ -2022,6 +2136,11 @@ function getSaleDetailsToPopulate() {
 
 // Function to call the upateItemDetails.php script to UPDATE item data in db
 function updateItem() {
+	if (isUpdateItemSubmitInProgress) {
+		showToastMessage('Item update is already in progress. Please wait.', 'itemDetailsMessage');
+		return;
+	}
+
 	var itemDetailsItemNumber = $('#itemDetailsItemNumber').val();
 	var itemDetailsItemName = $('#itemDetailsItemName').val();
 	var itemDetailsUnitAsSold = $('#itemDetailsUnitAsSold').val();
@@ -2030,6 +2149,12 @@ function updateItem() {
 	var itemDetailsUnitPrice = $('#itemDetailsUnitPrice').val();
 	var itemDetailsStatus = $('#itemDetailsStatus').val();
 	var itemDetailsDescription = $('#itemDetailsDescription').val();
+	var $updateItemButton = $('#updateItemDetailsButton');
+	var originalButtonText = $updateItemButton.data('original-text') || $updateItemButton.text();
+	var wasSuccessful = false;
+	$updateItemButton.data('original-text', originalButtonText);
+	isUpdateItemSubmitInProgress = true;
+	$updateItemButton.prop('disabled', true).text('Saving...');
 
 	$.ajax({
 		url: 'model/item/updateItemDetails.php',
@@ -2045,13 +2170,45 @@ function updateItem() {
 			itemDetailsDescription: itemDetailsDescription,
 		},
 		success: function (data) {
-			var result = $.parseJSON(data);
-			showToastMessage(result.alertMessage, 'itemDetailsMessage');
+			var result = data;
+			if (typeof data === 'string') {
+				try {
+					result = $.parseJSON(data);
+				} catch (e) {
+					showToastMessage('Unable to update item right now.', 'itemDetailsMessage');
+					return;
+				}
+			}
+
+			showToastMessage(result.alertMessage || result.message || result, 'itemDetailsMessage');
 			if (result.newStock != null) {
 				$('#itemDetailsTotalStock').val(result.newStock);
 			}
+
+			if (result && result.success !== undefined) {
+				wasSuccessful = !!result.success;
+			} else {
+				var resultText = (result.alertMessage || result.message || '').toLowerCase();
+				wasSuccessful = resultText.indexOf('success') !== -1 || resultText.indexOf('updated') !== -1;
+			}
+		},
+		error: function () {
+			showToastMessage('Unable to update item right now.', 'itemDetailsMessage');
 		},
 		complete: function () {
+			isUpdateItemSubmitInProgress = false;
+			$updateItemButton.prop('disabled', false).text(originalButtonText);
+
+			if (wasSuccessful) {
+				var itemForm = $updateItemButton.closest('form').get(0);
+				if (itemForm) {
+					itemForm.reset();
+				}
+				$('#itemDetailsUnitAsSold').trigger('chosen:updated');
+				$('#itemDetailsStatus').trigger('chosen:updated');
+				$('#imageContainer').empty();
+			}
+
 			searchTableCreator('itemDetailsTableDiv', itemDetailsSearchTableCreatorFile, 'itemDetailsTable');
 			searchTableCreator('purchaseDetailsTableDiv', purchaseDetailsSearchTableCreatorFile, 'purchaseDetailsTable');
 			searchTableCreator('saleDetailsTableDiv', saleDetailsSearchTableCreatorFile, 'saleDetailsTable');
@@ -2219,6 +2376,11 @@ function viewCreditBook() {
 }
 
 function recordCustomerPayment() {
+	if (isCreditPaymentSubmitInProgress) {
+		showToastMessage('Payment is already being recorded. Please wait.', 'creditBookMessage');
+		return;
+	}
+
 	var customerID = $('#creditCustomerID').val();
 	var paymentAmount = $('#creditPaymentAmount').val();
 	var paymentDate = $('#creditPaymentDate').val();
@@ -2226,13 +2388,22 @@ function recordCustomerPayment() {
 	var referenceNumber = $('#creditReferenceNumber').val();
 	var note = $('#creditNote').val();
 	var transactionID = $.trim($('#creditTransactionID').val());
+	var $recordPaymentButton = $('#recordPaymentButton');
+	var originalButtonText = $recordPaymentButton.data('original-text') || $recordPaymentButton.text();
+	$recordPaymentButton.data('original-text', originalButtonText);
+	isCreditPaymentSubmitInProgress = true;
+	$recordPaymentButton.prop('disabled', true).text('Saving...');
 
 	if (customerID === '' || paymentAmount === '' || paymentAmount <= 0) {
+		isCreditPaymentSubmitInProgress = false;
+		$recordPaymentButton.prop('disabled', false).text(originalButtonText);
 		showToastMessage('Please enter a customer ID and a valid payment amount.', 'creditBookMessage');
 		return;
 	}
 
 	if (transactionID !== '' && transactionID.indexOf('TXN-') !== 0) {
+		isCreditPaymentSubmitInProgress = false;
+		$recordPaymentButton.prop('disabled', false).text(originalButtonText);
 		showToastMessage('Please enter a valid Transaction ID (TXN-...).', 'creditBookMessage');
 		return;
 	}
@@ -2255,11 +2426,22 @@ function recordCustomerPayment() {
 				var result = typeof data === 'string' ? $.parseJSON(data) : data;
 				showToastMessage(result.message, 'creditBookMessage');
 				if (result.success) {
+					$('#creditPaymentAmount').val('0');
+					$('#creditTransactionID').val('');
+					$('#creditReferenceNumber').val('');
+					$('#creditNote').val('');
 					viewCreditBook();
 				}
 			} catch (e) {
 				showToastMessage('Unable to record payment.', 'creditBookMessage');
 			}
+		},
+		error: function () {
+			showToastMessage('Unable to record payment.', 'creditBookMessage');
+		},
+		complete: function () {
+			isCreditPaymentSubmitInProgress = false;
+			$recordPaymentButton.prop('disabled', false).text(originalButtonText);
 		}
 	});
 }

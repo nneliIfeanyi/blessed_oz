@@ -25,11 +25,31 @@ SET time_zone = "+00:00";
 -- --------------------------------------------------------
 
 --
+-- Table structure for table `stores`
+--
+
+CREATE TABLE IF NOT EXISTS `stores` (
+  `storeID` int(11) NOT NULL AUTO_INCREMENT,
+  `storeName` varchar(120) NOT NULL,
+  `storeCode` varchar(40) DEFAULT NULL,
+  `status` varchar(20) NOT NULL DEFAULT 'Active',
+  `createdOn` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`storeID`),
+  UNIQUE KEY `storeCode` (`storeCode`)
+) ENGINE=InnoDB DEFAULT CHARSET=latin1;
+
+INSERT IGNORE INTO `stores` (`storeID`, `storeName`, `storeCode`, `status`) VALUES
+(1, 'Main Store', 'MAIN', 'Active');
+
+-- --------------------------------------------------------
+
+--
 -- Table structure for table `customer`
 --
 
 CREATE TABLE `customer` (
   `customerID` int(11) NOT NULL,
+  `storeID` int(11) NOT NULL DEFAULT '1',
   `fullName` varchar(100) NOT NULL,
   `email` varchar(100) DEFAULT NULL,
   `mobile` int(11) NOT NULL,
@@ -67,6 +87,7 @@ INSERT INTO `customer` (`customerID`, `fullName`, `email`, `mobile`, `phone2`, `
 
 CREATE TABLE `item` (
   `productID` int(11) NOT NULL,
+  `storeID` int(11) NOT NULL DEFAULT '1',
   `itemNumber` varchar(255) NOT NULL,
   `itemName` varchar(255) NOT NULL,
   `unitAsSold` varchar(50) NOT NULL DEFAULT 'pcs',
@@ -103,6 +124,7 @@ INSERT INTO `item` (`productID`, `itemNumber`, `itemName`, `unitAsSold`, `discou
 
 CREATE TABLE `purchase` (
   `purchaseID` int(11) NOT NULL,
+  `storeID` int(11) NOT NULL DEFAULT '1',
   `itemNumber` varchar(255) NOT NULL,
   `purchaseDate` date NOT NULL,
   `itemName` varchar(255) NOT NULL,
@@ -139,6 +161,7 @@ INSERT INTO `purchase` (`purchaseID`, `itemNumber`, `purchaseDate`, `itemName`, 
 
 CREATE TABLE `sale` (
   `saleID` int(11) NOT NULL,
+  `storeID` int(11) NOT NULL DEFAULT '1',
   `itemNumber` varchar(255) NOT NULL,
   `customerID` int(11) NOT NULL,
   `customerName` varchar(255) NOT NULL,
@@ -182,6 +205,7 @@ INSERT INTO `sale` (`saleID`, `itemNumber`, `customerID`, `customerName`, `itemN
 
 CREATE TABLE IF NOT EXISTS `sale_headers` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
+  `storeID` int(11) NOT NULL DEFAULT '1',
   `saleReference` varchar(50) NOT NULL,
   `customerID` int(11) NOT NULL,
   `customerName` varchar(255) DEFAULT NULL,
@@ -190,6 +214,7 @@ CREATE TABLE IF NOT EXISTS `sale_headers` (
   `createdAt` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   UNIQUE KEY `saleReference` (`saleReference`),
+  KEY `idx_storeID` (`storeID`),
   KEY `customerID` (`customerID`)
 ) ENGINE=InnoDB DEFAULT CHARSET=latin1;
 
@@ -201,6 +226,7 @@ CREATE TABLE IF NOT EXISTS `sale_headers` (
 
 CREATE TABLE IF NOT EXISTS `sale_items` (
   `saleItemID` int(11) NOT NULL AUTO_INCREMENT,
+  `storeID` int(11) NOT NULL DEFAULT '1',
   `saleReference` varchar(50) NOT NULL,
   `itemNumber` varchar(255) NOT NULL,
   `itemName` varchar(255) NOT NULL,
@@ -211,6 +237,7 @@ CREATE TABLE IF NOT EXISTS `sale_items` (
   `lineTotal` float NOT NULL DEFAULT '0',
   `createdAt` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`saleItemID`),
+  KEY `idx_storeID` (`storeID`),
   KEY `saleReference` (`saleReference`)
 ) ENGINE=InnoDB DEFAULT CHARSET=latin1;
 
@@ -255,6 +282,7 @@ FROM sale;
 
 CREATE TABLE IF NOT EXISTS `customer_ledger` (
   `ledgerID` int(11) NOT NULL AUTO_INCREMENT,
+  `storeID` int(11) NOT NULL DEFAULT '1',
   `customerID` int(11) NOT NULL,
   `saleID` int(11) DEFAULT NULL,
   `entryType` varchar(255) NOT NULL,
@@ -263,6 +291,7 @@ CREATE TABLE IF NOT EXISTS `customer_ledger` (
   `entryDate` date NOT NULL,
   `note` text DEFAULT NULL,
   PRIMARY KEY (`ledgerID`),
+  KEY `idx_storeID` (`storeID`),
   KEY `customerID` (`customerID`)
 ) ENGINE=InnoDB DEFAULT CHARSET=latin1;
 
@@ -274,6 +303,7 @@ CREATE TABLE IF NOT EXISTS `customer_ledger` (
 
 CREATE TABLE IF NOT EXISTS `customer_payments` (
   `paymentID` int(11) NOT NULL AUTO_INCREMENT,
+  `storeID` int(11) NOT NULL DEFAULT '1',
   `customerID` int(11) NOT NULL,
   `saleReference` varchar(50) DEFAULT NULL,
   `saleID` int(11) DEFAULT NULL,
@@ -284,6 +314,7 @@ CREATE TABLE IF NOT EXISTS `customer_payments` (
   `note` text DEFAULT NULL,
   `receiptNumber` varchar(255) DEFAULT NULL,
   PRIMARY KEY (`paymentID`),
+  KEY `idx_storeID` (`storeID`),
   KEY `customerID` (`customerID`)
 ) ENGINE=InnoDB DEFAULT CHARSET=latin1;
 
@@ -319,6 +350,7 @@ INSERT INTO `user` (`userID`, `fullName`, `username`, `password`, `role`, `statu
 
 CREATE TABLE `vendor` (
   `vendorID` int(11) NOT NULL,
+  `storeID` int(11) NOT NULL DEFAULT '1',
   `fullName` varchar(255) NOT NULL,
   `email` varchar(255) DEFAULT NULL,
   `mobile` int(11) NOT NULL,
@@ -353,25 +385,29 @@ INSERT INTO `vendor` (`vendorID`, `fullName`, `email`, `mobile`, `phone2`, `addr
 -- Indexes for table `customer`
 --
 ALTER TABLE `customer`
-  ADD PRIMARY KEY (`customerID`);
+  ADD PRIMARY KEY (`customerID`),
+  ADD KEY `idx_storeID` (`storeID`);
 
 --
 -- Indexes for table `item`
 --
 ALTER TABLE `item`
-  ADD PRIMARY KEY (`productID`);
+  ADD PRIMARY KEY (`productID`),
+  ADD KEY `idx_storeID` (`storeID`);
 
 --
 -- Indexes for table `purchase`
 --
 ALTER TABLE `purchase`
-  ADD PRIMARY KEY (`purchaseID`);
+  ADD PRIMARY KEY (`purchaseID`),
+  ADD KEY `idx_storeID` (`storeID`);
 
 --
 -- Indexes for table `sale`
 --
 ALTER TABLE `sale`
-  ADD PRIMARY KEY (`saleID`);
+  ADD PRIMARY KEY (`saleID`),
+  ADD KEY `idx_storeID` (`storeID`);
 
 --
 -- Indexes for table `user`
@@ -383,7 +419,8 @@ ALTER TABLE `user`
 -- Indexes for table `vendor`
 --
 ALTER TABLE `vendor`
-  ADD PRIMARY KEY (`vendorID`);
+  ADD PRIMARY KEY (`vendorID`),
+  ADD KEY `idx_storeID` (`storeID`);
 
 --
 -- AUTO_INCREMENT for dumped tables
@@ -418,6 +455,12 @@ ALTER TABLE `sale`
 --
 ALTER TABLE `user`
   MODIFY `userID` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=8;
+
+--
+-- AUTO_INCREMENT for table `stores`
+--
+ALTER TABLE `stores`
+  MODIFY `storeID` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=2;
 
 --
 -- AUTO_INCREMENT for table `vendor`

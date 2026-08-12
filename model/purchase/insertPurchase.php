@@ -1,6 +1,11 @@
 <?php
+session_start();
 require_once('../../inc/config/constants.php');
 require_once('../../inc/config/db.php');
+require_once('../../inc/store.php');
+
+ensureActiveStoreSession($conn);
+$activeStoreID = (int) $_SESSION['activeStoreID'];
 
 if (isset($_POST['purchaseItems']) || isset($_POST['purchaseDetailsItemNumber'])) {
 	$purchaseDetailsPurchaseDate = isset($_POST['purchaseDetailsPurchaseDate']) ? trim(htmlentities($_POST['purchaseDetailsPurchaseDate'])) : date('Y-m-d');
@@ -35,6 +40,7 @@ if (isset($_POST['purchaseItems']) || isset($_POST['purchaseDetailsItemNumber'])
 	try {
 		$conn->exec("CREATE TABLE IF NOT EXISTS purchase_headers (
 			id INT(11) NOT NULL AUTO_INCREMENT,
+			storeID INT(11) NOT NULL DEFAULT '1',
 			transactionReference VARCHAR(50) NOT NULL,
 			vendorName VARCHAR(255) DEFAULT NULL,
 			purchaseDate DATE NOT NULL,
@@ -45,6 +51,7 @@ if (isset($_POST['purchaseItems']) || isset($_POST['purchaseDetailsItemNumber'])
 
 		$conn->exec("CREATE TABLE IF NOT EXISTS purchase_items (
 			purchaseItemID INT(11) NOT NULL AUTO_INCREMENT,
+			storeID INT(11) NOT NULL DEFAULT '1',
 			transactionReference VARCHAR(50) NOT NULL,
 			itemNumber VARCHAR(255) NOT NULL,
 			itemName VARCHAR(255) NOT NULL,
@@ -61,9 +68,18 @@ if (isset($_POST['purchaseItems']) || isset($_POST['purchaseDetailsItemNumber'])
 			$conn->exec("ALTER TABLE purchase ADD COLUMN transactionReference VARCHAR(255) DEFAULT NULL");
 		}
 
-		$vendorIDsql = 'SELECT vendorID FROM vendor WHERE fullName = :fullName';
+		$purchaseHeadersStoreColumn = $conn->query("SHOW COLUMNS FROM purchase_headers LIKE 'storeID'");
+		if ($purchaseHeadersStoreColumn->rowCount() === 0) {
+			$conn->exec("ALTER TABLE purchase_headers ADD COLUMN storeID INT(11) NOT NULL DEFAULT '1' AFTER id");
+		}
+		$purchaseItemsStoreColumn = $conn->query("SHOW COLUMNS FROM purchase_items LIKE 'storeID'");
+		if ($purchaseItemsStoreColumn->rowCount() === 0) {
+			$conn->exec("ALTER TABLE purchase_items ADD COLUMN storeID INT(11) NOT NULL DEFAULT '1' AFTER purchaseItemID");
+		}
+
+		$vendorIDsql = 'SELECT vendorID FROM vendor WHERE fullName = :fullName AND storeID = :storeID';
 		$vendorIDStatement = $conn->prepare($vendorIDsql);
-		$vendorIDStatement->execute(['fullName' => $purchaseDetailsVendorName]);
+		$vendorIDStatement->execute(['fullName' => $purchaseDetailsVendorName, 'storeID' => $activeStoreID]);
 		$vendorRow = $vendorIDStatement->fetch(PDO::FETCH_ASSOC);
 		if (!$vendorRow) {
 			echo json_encode(['success' => false, 'message' => 'Vendor does not exist.']);
@@ -74,9 +90,9 @@ if (isset($_POST['purchaseItems']) || isset($_POST['purchaseDetailsItemNumber'])
 		$conn->beginTransaction();
 		$transactionReference = 'TXN-' . date('YmdHis') . '-' . substr(strtoupper(md5(uniqid('', true))), 0, 6);
 
-		$insertHeaderSql = 'INSERT INTO purchase_headers(transactionReference, vendorName, purchaseDate, createdAt) VALUES(:transactionReference, :vendorName, :purchaseDate, NOW())';
+		$insertHeaderSql = 'INSERT INTO purchase_headers(storeID, transactionReference, vendorName, purchaseDate, createdAt) VALUES(:storeID, :transactionReference, :vendorName, :purchaseDate, NOW())';
 		$insertHeaderStatement = $conn->prepare($insertHeaderSql);
-		$insertHeaderStatement->execute(['transactionReference' => $transactionReference, 'vendorName' => $purchaseDetailsVendorName, 'purchaseDate' => $purchaseDetailsPurchaseDate]);
+		$insertHeaderStatement->execute(['storeID' => $activeStoreID, 'transactionReference' => $transactionReference, 'vendorName' => $purchaseDetailsVendorName, 'purchaseDate' => $purchaseDetailsPurchaseDate]);
 
 		foreach ($purchaseItems as $itemData) {
 			$itemNumber = isset($itemData['itemNumber']) ? trim((string) $itemData['itemNumber']) : '';
@@ -94,9 +110,9 @@ if (isset($_POST['purchaseItems']) || isset($_POST['purchaseDetailsItemNumber'])
 				throw new Exception('Please enter a valid unit price for each row.');
 			}
 
-			$stockSql = 'SELECT stock FROM item WHERE itemNumber=:itemNumber';
+			$stockSql = 'SELECT stock FROM item WHERE itemNumber=:itemNumber AND storeID = :storeID';
 			$stockStatement = $conn->prepare($stockSql);
-			$stockStatement->execute(['itemNumber' => $itemNumber]);
+			$stockStatement->execute(['itemNumber' => $itemNumber, 'storeID' => $activeStoreID]);
 			if ($stockStatement->rowCount() < 1) {
 				throw new Exception('Item does not exist in DB.');
 			}
@@ -104,18 +120,18 @@ if (isset($_POST['purchaseItems']) || isset($_POST['purchaseDetailsItemNumber'])
 			$initialStock = (int) $stockRow['stock'];
 			$newStock = $initialStock + (int) $quantity;
 
-			$updateStockSql = 'UPDATE item SET stock = :stock WHERE itemNumber = :itemNumber';
+			$updateStockSql = 'UPDATE item SET stock = :stock WHERE itemNumber = :itemNumber AND storeID = :storeID';
 			$updateStockStatement = $conn->prepare($updateStockSql);
-			$updateStockStatement->execute(['stock' => $newStock, 'itemNumber' => $itemNumber]);
+			$updateStockStatement->execute(['stock' => $newStock, 'itemNumber' => $itemNumber, 'storeID' => $activeStoreID]);
 
 			$lineTotal = round(((float) $unitPrice * (int) $quantity), 2);
-			$insertPurchaseSql = 'INSERT INTO purchase(itemNumber, purchaseDate, itemName, unitPrice, quantity, vendorName, vendorID, transactionReference) VALUES(:itemNumber, :purchaseDate, :itemName, :unitPrice, :quantity, :vendorName, :vendorID, :transactionReference)';
+			$insertPurchaseSql = 'INSERT INTO purchase(storeID, itemNumber, purchaseDate, itemName, unitPrice, quantity, vendorName, vendorID, transactionReference) VALUES(:storeID, :itemNumber, :purchaseDate, :itemName, :unitPrice, :quantity, :vendorName, :vendorID, :transactionReference)';
 			$insertPurchaseStatement = $conn->prepare($insertPurchaseSql);
-			$insertPurchaseStatement->execute(['itemNumber' => $itemNumber, 'purchaseDate' => $purchaseDetailsPurchaseDate, 'itemName' => $itemName, 'unitPrice' => (float) $unitPrice, 'quantity' => (int) $quantity, 'vendorName' => $purchaseDetailsVendorName, 'vendorID' => $vendorID, 'transactionReference' => $transactionReference]);
+			$insertPurchaseStatement->execute(['storeID' => $activeStoreID, 'itemNumber' => $itemNumber, 'purchaseDate' => $purchaseDetailsPurchaseDate, 'itemName' => $itemName, 'unitPrice' => (float) $unitPrice, 'quantity' => (int) $quantity, 'vendorName' => $purchaseDetailsVendorName, 'vendorID' => $vendorID, 'transactionReference' => $transactionReference]);
 
-			$insertPurchaseItemSql = 'INSERT INTO purchase_items(transactionReference, itemNumber, itemName, quantity, unitPrice, lineTotal, createdAt) VALUES(:transactionReference, :itemNumber, :itemName, :quantity, :unitPrice, :lineTotal, NOW())';
+			$insertPurchaseItemSql = 'INSERT INTO purchase_items(storeID, transactionReference, itemNumber, itemName, quantity, unitPrice, lineTotal, createdAt) VALUES(:storeID, :transactionReference, :itemNumber, :itemName, :quantity, :unitPrice, :lineTotal, NOW())';
 			$insertPurchaseItemStatement = $conn->prepare($insertPurchaseItemSql);
-			$insertPurchaseItemStatement->execute(['transactionReference' => $transactionReference, 'itemNumber' => $itemNumber, 'itemName' => $itemName, 'quantity' => (int) $quantity, 'unitPrice' => (float) $unitPrice, 'lineTotal' => $lineTotal]);
+			$insertPurchaseItemStatement->execute(['storeID' => $activeStoreID, 'transactionReference' => $transactionReference, 'itemNumber' => $itemNumber, 'itemName' => $itemName, 'quantity' => (int) $quantity, 'unitPrice' => (float) $unitPrice, 'lineTotal' => $lineTotal]);
 		}
 
 		$conn->commit();

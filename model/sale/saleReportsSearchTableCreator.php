@@ -1,14 +1,19 @@
 <?php
+session_start();
 require_once('../../inc/config/constants.php');
 require_once('../../inc/config/db.php');
+require_once('../../inc/store.php');
+
+ensureActiveStoreSession($conn);
+$activeStoreID = (int) $_SESSION['activeStoreID'];
 
 $uPrice = 0;
 $qty = 0;
 $totalPrice = 0;
 
-$saleDetailsSearchSql = 'SELECT sh.saleReference, sh.customerID, sh.customerName, sh.saleDate, sh.amountPaid, si.saleItemID, si.itemNumber, si.itemName, COALESCE(i.unitAsSold, "pcs") AS unitAsSold, si.discount, si.quantity, si.unitPrice, si.reason, si.lineTotal FROM sale_headers sh LEFT JOIN sale_items si ON sh.saleReference = si.saleReference LEFT JOIN item i ON i.itemNumber = si.itemNumber ORDER BY sh.saleDate DESC, sh.id DESC, si.saleItemID ASC';
+$saleDetailsSearchSql = 'SELECT sh.saleReference, sh.customerID, sh.customerName, sh.saleDate, sh.amountPaid, si.saleItemID, si.itemNumber, si.itemName, COALESCE(i.unitAsSold, "pcs") AS unitAsSold, si.discount, si.quantity, si.unitPrice, si.reason, si.lineTotal FROM sale_headers sh LEFT JOIN sale_items si ON sh.saleReference = si.saleReference AND si.storeID = sh.storeID LEFT JOIN item i ON i.itemNumber = si.itemNumber AND i.storeID = sh.storeID WHERE sh.storeID = :storeID ORDER BY sh.saleDate DESC, sh.id DESC, si.saleItemID ASC';
 $saleDetailsSearchStatement = $conn->prepare($saleDetailsSearchSql);
-$saleDetailsSearchStatement->execute();
+$saleDetailsSearchStatement->execute(['storeID' => $activeStoreID]);
 
 $output = '<table id="saleReportsTable" class="table table-sm table-striped table-bordered table-hover" style="width:100%">
 				<thead>

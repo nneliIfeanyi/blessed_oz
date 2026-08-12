@@ -1,6 +1,11 @@
 <?php
+session_start();
 require_once('../../inc/config/constants.php');
 require_once('../../inc/config/db.php');
+require_once('../../inc/store.php');
+
+ensureActiveStoreSession($conn);
+$activeStoreID = (int) $_SESSION['activeStoreID'];
 
 // Check if the POST request is received and if so, execute the script
 if (isset($_POST['textBoxValue'])) {
@@ -8,9 +13,9 @@ if (isset($_POST['textBoxValue'])) {
 	$itemNameString = '%' . htmlentities($_POST['textBoxValue']) . '%';
 
 	// Construct the SQL query to get the item name
-	$sql = 'SELECT itemName FROM item WHERE itemName LIKE ?';
+	$sql = 'SELECT itemName FROM item WHERE itemName LIKE ? AND storeID = ?';
 	$stmt = $conn->prepare($sql);
-	$stmt->execute([$itemNameString]);
+	$stmt->execute([$itemNameString, $activeStoreID]);
 
 	// If we receive any results from the above query, then display them in a list
 	if ($stmt->rowCount() > 0) {

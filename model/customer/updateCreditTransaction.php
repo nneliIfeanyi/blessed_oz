@@ -1,6 +1,11 @@
 <?php
+session_start();
 require_once('../../inc/config/constants.php');
 require_once('../../inc/config/db.php');
+require_once('../../inc/store.php');
+
+ensureActiveStoreSession($conn);
+$activeStoreID = (int) $_SESSION['activeStoreID'];
 
 header('Content-Type: application/json');
 
@@ -32,9 +37,9 @@ if ($paymentAmount <= 0) {
 try {
     $conn->beginTransaction();
 
-    $transactionSql = 'SELECT sh.saleReference, sh.customerID, sh.customerName, sh.saleDate, ROUND(COALESCE(SUM(si.lineTotal), 0), 2) AS amountDue, ROUND(COALESCE(sh.amountPaid, 0), 2) AS amountPaid FROM sale_headers sh LEFT JOIN sale_items si ON si.saleReference = sh.saleReference WHERE sh.saleReference = :saleReference GROUP BY sh.id, sh.saleReference, sh.customerID, sh.customerName, sh.saleDate, sh.amountPaid LIMIT 1';
+    $transactionSql = 'SELECT sh.saleReference, sh.customerID, sh.customerName, sh.saleDate, ROUND(COALESCE(SUM(si.lineTotal), 0), 2) AS amountDue, ROUND(COALESCE(sh.amountPaid, 0), 2) AS amountPaid FROM sale_headers sh LEFT JOIN sale_items si ON si.saleReference = sh.saleReference AND si.storeID = sh.storeID WHERE sh.saleReference = :saleReference AND sh.storeID = :storeID GROUP BY sh.id, sh.saleReference, sh.customerID, sh.customerName, sh.saleDate, sh.amountPaid LIMIT 1';
     $transactionStatement = $conn->prepare($transactionSql);
-    $transactionStatement->execute(['saleReference' => $saleReference]);
+    $transactionStatement->execute(['saleReference' => $saleReference, 'storeID' => $activeStoreID]);
 
     if ($transactionStatement->rowCount() < 1) {
         $conn->rollBack();
@@ -68,11 +73,12 @@ try {
     $newAmountPaid = round($amountPaid + $paymentAmount, 2);
     $newTransactionBalance = round(max(0, $amountDue - $newAmountPaid), 2);
 
-    $updateHeaderSql = 'UPDATE sale_headers SET amountPaid = :amountPaid WHERE saleReference = :saleReference';
+    $updateHeaderSql = 'UPDATE sale_headers SET amountPaid = :amountPaid WHERE saleReference = :saleReference AND storeID = :storeID';
     $updateHeaderStatement = $conn->prepare($updateHeaderSql);
-    $updateHeaderStatement->execute(['amountPaid' => $newAmountPaid, 'saleReference' => $saleReference]);
+    $updateHeaderStatement->execute(['amountPaid' => $newAmountPaid, 'saleReference' => $saleReference, 'storeID' => $activeStoreID]);
 
     $paymentPayload = [
+        'storeID' => $activeStoreID,
         'customerID' => $customerID,
         'saleID' => null,
         'amount' => $paymentAmount,
@@ -85,25 +91,26 @@ try {
 
     $saleReferenceColumnCheck = $conn->query("SHOW COLUMNS FROM customer_payments LIKE 'saleReference'");
     if ($saleReferenceColumnCheck->rowCount() > 0) {
-        $paymentInsertSql = 'INSERT INTO customer_payments(customerID, saleReference, saleID, amount, paymentDate, paymentMethod, referenceNumber, note, receiptNumber) VALUES(:customerID, :saleReference, :saleID, :amount, :paymentDate, :paymentMethod, :referenceNumber, :note, :receiptNumber)';
+        $paymentInsertSql = 'INSERT INTO customer_payments(storeID, customerID, saleReference, saleID, amount, paymentDate, paymentMethod, referenceNumber, note, receiptNumber) VALUES(:storeID, :customerID, :saleReference, :saleID, :amount, :paymentDate, :paymentMethod, :referenceNumber, :note, :receiptNumber)';
         $paymentPayload['saleReference'] = $saleReference;
     } else {
-        $paymentInsertSql = 'INSERT INTO customer_payments(customerID, saleID, amount, paymentDate, paymentMethod, referenceNumber, note, receiptNumber) VALUES(:customerID, :saleID, :amount, :paymentDate, :paymentMethod, :referenceNumber, :note, :receiptNumber)';
+        $paymentInsertSql = 'INSERT INTO customer_payments(storeID, customerID, saleID, amount, paymentDate, paymentMethod, referenceNumber, note, receiptNumber) VALUES(:storeID, :customerID, :saleID, :amount, :paymentDate, :paymentMethod, :referenceNumber, :note, :receiptNumber)';
     }
 
     $paymentInsertStatement = $conn->prepare($paymentInsertSql);
     $paymentInsertStatement->execute($paymentPayload);
 
-    $ledgerBalanceSql = 'SELECT COALESCE(balanceAfter, 0) AS balanceAfter FROM customer_ledger WHERE customerID = :customerID ORDER BY entryDate DESC, ledgerID DESC LIMIT 1';
+    $ledgerBalanceSql = 'SELECT COALESCE(balanceAfter, 0) AS balanceAfter FROM customer_ledger WHERE customerID = :customerID AND storeID = :storeID ORDER BY entryDate DESC, ledgerID DESC LIMIT 1';
     $ledgerBalanceStatement = $conn->prepare($ledgerBalanceSql);
-    $ledgerBalanceStatement->execute(['customerID' => $customerID]);
+    $ledgerBalanceStatement->execute(['customerID' => $customerID, 'storeID' => $activeStoreID]);
     $lastBalance = $ledgerBalanceStatement->fetch(PDO::FETCH_ASSOC);
     $customerBalance = isset($lastBalance['balanceAfter']) ? (float) $lastBalance['balanceAfter'] : 0;
     $newCustomerBalance = round(max(0, $customerBalance - $paymentAmount), 2);
 
-    $ledgerInsertSql = 'INSERT INTO customer_ledger(customerID, saleID, entryType, amount, balanceAfter, entryDate, note) VALUES(:customerID, :saleID, :entryType, :amount, :balanceAfter, :entryDate, :note)';
+    $ledgerInsertSql = 'INSERT INTO customer_ledger(storeID, customerID, saleID, entryType, amount, balanceAfter, entryDate, note) VALUES(:storeID, :customerID, :saleID, :entryType, :amount, :balanceAfter, :entryDate, :note)';
     $ledgerInsertStatement = $conn->prepare($ledgerInsertSql);
     $ledgerInsertStatement->execute([
+        'storeID' => $activeStoreID,
         'customerID' => $customerID,
         'saleID' => null,
         'entryType' => 'Payment',

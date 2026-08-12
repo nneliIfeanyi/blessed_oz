@@ -1,6 +1,11 @@
 <?php
+session_start();
 require_once('../../inc/config/constants.php');
 require_once('../../inc/config/db.php');
+require_once('../../inc/store.php');
+
+ensureActiveStoreSession($conn);
+$activeStoreID = (int) $_SESSION['activeStoreID'];
 
 $initialStock = 0;
 $baseImageFolder = '../../data/item_images/';
@@ -80,9 +85,9 @@ if (isset($_POST['itemDetailsItemNumber'])) {
 		}
 
 		// Calculate the stock values
-		$stockSql = 'SELECT stock FROM item WHERE itemNumber=:itemNumber';
+		$stockSql = 'SELECT stock FROM item WHERE itemNumber=:itemNumber AND storeID = :storeID';
 		$stockStatement = $conn->prepare($stockSql);
-		$stockStatement->execute(['itemNumber' => $itemNumber]);
+		$stockStatement->execute(['itemNumber' => $itemNumber, 'storeID' => $activeStoreID]);
 		if ($stockStatement->rowCount() > 0) {
 			//$row = $stockStatement->fetch(PDO::FETCH_ASSOC);
 			//$quantity = $quantity + $row['stock'];
@@ -91,9 +96,9 @@ if (isset($_POST['itemDetailsItemNumber'])) {
 		} else {
 			// Item does not exist, therefore, you can add it to DB as a new item
 			// Start the insert process
-			$insertItemSql = 'INSERT INTO item(itemNumber, itemName, unitAsSold, discount, stock, unitPrice, status, description) VALUES(:itemNumber, :itemName, :unitAsSold, :discount, :stock, :unitPrice, :status, :description)';
+			$insertItemSql = 'INSERT INTO item(storeID, itemNumber, itemName, unitAsSold, discount, stock, unitPrice, status, description) VALUES(:storeID, :itemNumber, :itemName, :unitAsSold, :discount, :stock, :unitPrice, :status, :description)';
 			$insertItemStatement = $conn->prepare($insertItemSql);
-			$insertItemStatement->execute(['itemNumber' => $itemNumber, 'itemName' => $itemName, 'unitAsSold' => $unitAsSold, 'discount' => $discount, 'stock' => $quantity, 'unitPrice' => $unitPrice, 'status' => $status, 'description' => $description]);
+			$insertItemStatement->execute(['storeID' => $activeStoreID, 'itemNumber' => $itemNumber, 'itemName' => $itemName, 'unitAsSold' => $unitAsSold, 'discount' => $discount, 'stock' => $quantity, 'unitPrice' => $unitPrice, 'status' => $status, 'description' => $description]);
 			echo '<div class="alert alert-success"><button type="button" class="close" data-dismiss="alert">&times;</button>Item added to database.</div>';
 			exit();
 		}

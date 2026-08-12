@@ -1,6 +1,11 @@
 <?php
+session_start();
 require_once('../../inc/config/constants.php');
 require_once('../../inc/config/db.php');
+require_once('../../inc/store.php');
+
+ensureActiveStoreSession($conn);
+$activeStoreID = (int) $_SESSION['activeStoreID'];
 
 $settingsFile = '../../inc/config/site_settings.json';
 $settings = [
@@ -72,9 +77,9 @@ if (isset($_POST['itemNumber'])) {
 		}
 
 		// Keep the existing stock unchanged when updating item details
-		$stockSelectSql = 'SELECT stock FROM item WHERE itemNumber = :itemNumber';
+		$stockSelectSql = 'SELECT stock FROM item WHERE itemNumber = :itemNumber AND storeID = :storeID';
 		$stockSelectStatement = $conn->prepare($stockSelectSql);
-		$stockSelectStatement->execute(['itemNumber' => $itemNumber]);
+		$stockSelectStatement->execute(['itemNumber' => $itemNumber, 'storeID' => $activeStoreID]);
 		if ($stockSelectStatement->rowCount() > 0) {
 			$row = $stockSelectStatement->fetch(PDO::FETCH_ASSOC);
 			$initialStock = $row['stock'];
@@ -88,19 +93,19 @@ if (isset($_POST['itemNumber'])) {
 		}
 
 		// Construct the UPDATE query
-		$updateItemDetailsSql = 'UPDATE item SET itemName = :itemName, unitAsSold = :unitAsSold, discount = :discount, stock = :stock, unitPrice = :unitPrice, status = :status, description = :description WHERE itemNumber = :itemNumber';
+		$updateItemDetailsSql = 'UPDATE item SET itemName = :itemName, unitAsSold = :unitAsSold, discount = :discount, stock = :stock, unitPrice = :unitPrice, status = :status, description = :description WHERE itemNumber = :itemNumber AND storeID = :storeID';
 		$updateItemDetailsStatement = $conn->prepare($updateItemDetailsSql);
-		$updateItemDetailsStatement->execute(['itemName' => $itemName, 'unitAsSold' => $unitAsSold, 'discount' => $discount, 'stock' => $newStock, 'unitPrice' => $itemDetailsUnitPrice, 'status' => $status, 'description' => $description, 'itemNumber' => $itemNumber]);
+		$updateItemDetailsStatement->execute(['itemName' => $itemName, 'unitAsSold' => $unitAsSold, 'discount' => $discount, 'stock' => $newStock, 'unitPrice' => $itemDetailsUnitPrice, 'status' => $status, 'description' => $description, 'itemNumber' => $itemNumber, 'storeID' => $activeStoreID]);
 
 		// UPDATE item name in sale table
-		$updateItemInSaleTableSql = 'UPDATE sale SET itemName = :itemName WHERE itemNumber = :itemNumber';
+		$updateItemInSaleTableSql = 'UPDATE sale SET itemName = :itemName WHERE itemNumber = :itemNumber AND storeID = :storeID';
 		$updateItemInSaleTableSstatement = $conn->prepare($updateItemInSaleTableSql);
-		$updateItemInSaleTableSstatement->execute(['itemName' => $itemName, 'itemNumber' => $itemNumber]);
+		$updateItemInSaleTableSstatement->execute(['itemName' => $itemName, 'itemNumber' => $itemNumber, 'storeID' => $activeStoreID]);
 
 		// UPDATE item name in purchase table
-		$updateItemInPurchaseTableSql = 'UPDATE purchase SET itemName = :itemName WHERE itemNumber = :itemNumber';
+		$updateItemInPurchaseTableSql = 'UPDATE purchase SET itemName = :itemName WHERE itemNumber = :itemNumber AND storeID = :storeID';
 		$updateItemInPurchaseTableSstatement = $conn->prepare($updateItemInPurchaseTableSql);
-		$updateItemInPurchaseTableSstatement->execute(['itemName' => $itemName, 'itemNumber' => $itemNumber]);
+		$updateItemInPurchaseTableSstatement->execute(['itemName' => $itemName, 'itemNumber' => $itemNumber, 'storeID' => $activeStoreID]);
 
 		$successAlert = '<div class="alert alert-warning"><button type="button" class="close" data-dismiss="alert">&times;</button>Item details updated. Stock was not changed.</div>';
 		$data = ['alertMessage' => $successAlert, 'newStock' => $newStock];

@@ -4,9 +4,13 @@ session_start();
 require_once('../../inc/config/constants.php');
 require_once('../../inc/config/db.php');
 require_once('../../inc/auth.php');
+require_once('../../inc/store.php');
 
 ensureUserRoleColumn($conn);
 bootstrapFirstSuperAdmin($conn);
+ensureActiveStoreSession($conn);
+$activeStoreID = (int) $_SESSION['activeStoreID'];
+$activeStoreName = isset($_SESSION['activeStoreName']) ? (string) $_SESSION['activeStoreName'] : 'Main Store';
 
 if (!isset($_SESSION['loggedIn']) || $_SESSION['loggedIn'] !== '1' || !isset($_SESSION['role']) || $_SESSION['role'] !== 'super_admin') {
     header('Location: ../../index.php');
@@ -32,6 +36,8 @@ try {
 
     $conn->exec("CREATE TABLE IF NOT EXISTS `archive_batches` (
         `batchID` int(11) NOT NULL AUTO_INCREMENT,
+        `storeID` int(11) NOT NULL DEFAULT '1',
+        `storeName` varchar(120) DEFAULT NULL,
         `archivedAt` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
         `archivedByUserID` int(11) DEFAULT NULL,
         `archivedByUsername` varchar(255) DEFAULT NULL,
@@ -50,6 +56,7 @@ try {
     $conn->exec("CREATE TABLE IF NOT EXISTS `purchase_archive` (
         `archiveID` int(11) NOT NULL AUTO_INCREMENT,
         `batchID` int(11) NOT NULL,
+        `storeID` int(11) NOT NULL DEFAULT '1',
         `purchaseID` int(11) DEFAULT NULL,
         `itemNumber` varchar(255) DEFAULT NULL,
         `purchaseDate` date DEFAULT NULL,
@@ -67,6 +74,7 @@ try {
     $conn->exec("CREATE TABLE IF NOT EXISTS `purchase_headers_archive` (
         `archiveID` int(11) NOT NULL AUTO_INCREMENT,
         `batchID` int(11) NOT NULL,
+        `storeID` int(11) NOT NULL DEFAULT '1',
         `id` int(11) DEFAULT NULL,
         `transactionReference` varchar(50) DEFAULT NULL,
         `vendorName` varchar(255) DEFAULT NULL,
@@ -80,6 +88,7 @@ try {
     $conn->exec("CREATE TABLE IF NOT EXISTS `purchase_items_archive` (
         `archiveID` int(11) NOT NULL AUTO_INCREMENT,
         `batchID` int(11) NOT NULL,
+        `storeID` int(11) NOT NULL DEFAULT '1',
         `purchaseItemID` int(11) DEFAULT NULL,
         `transactionReference` varchar(50) DEFAULT NULL,
         `itemNumber` varchar(255) DEFAULT NULL,
@@ -96,6 +105,7 @@ try {
     $conn->exec("CREATE TABLE IF NOT EXISTS `sale_archive` (
         `archiveID` int(11) NOT NULL AUTO_INCREMENT,
         `batchID` int(11) NOT NULL,
+        `storeID` int(11) NOT NULL DEFAULT '1',
         `saleID` int(11) DEFAULT NULL,
         `itemNumber` varchar(255) DEFAULT NULL,
         `customerID` int(11) DEFAULT NULL,
@@ -114,6 +124,7 @@ try {
     $conn->exec("CREATE TABLE IF NOT EXISTS `sale_headers_archive` (
         `archiveID` int(11) NOT NULL AUTO_INCREMENT,
         `batchID` int(11) NOT NULL,
+        `storeID` int(11) NOT NULL DEFAULT '1',
         `id` int(11) DEFAULT NULL,
         `saleReference` varchar(50) DEFAULT NULL,
         `customerID` int(11) DEFAULT NULL,
@@ -129,6 +140,7 @@ try {
     $conn->exec("CREATE TABLE IF NOT EXISTS `sale_items_archive` (
         `archiveID` int(11) NOT NULL AUTO_INCREMENT,
         `batchID` int(11) NOT NULL,
+        `storeID` int(11) NOT NULL DEFAULT '1',
         `saleItemID` int(11) DEFAULT NULL,
         `saleReference` varchar(50) DEFAULT NULL,
         `itemNumber` varchar(255) DEFAULT NULL,
@@ -147,6 +159,7 @@ try {
     $conn->exec("CREATE TABLE IF NOT EXISTS `customer_ledger_archive` (
         `archiveID` int(11) NOT NULL AUTO_INCREMENT,
         `batchID` int(11) NOT NULL,
+        `storeID` int(11) NOT NULL DEFAULT '1',
         `ledgerID` int(11) DEFAULT NULL,
         `customerID` int(11) DEFAULT NULL,
         `saleID` int(11) DEFAULT NULL,
@@ -163,6 +176,7 @@ try {
     $conn->exec("CREATE TABLE IF NOT EXISTS `customer_payments_archive` (
         `archiveID` int(11) NOT NULL AUTO_INCREMENT,
         `batchID` int(11) NOT NULL,
+        `storeID` int(11) NOT NULL DEFAULT '1',
         `paymentID` int(11) DEFAULT NULL,
         `customerID` int(11) DEFAULT NULL,
         `saleID` int(11) DEFAULT NULL,
@@ -178,16 +192,45 @@ try {
         KEY `batchID` (`batchID`)
     ) ENGINE=InnoDB DEFAULT CHARSET=latin1");
 
-    $rowCounts = [
-        'purchaseRows' => (int) $conn->query('SELECT COUNT(*) FROM purchase')->fetchColumn(),
-        'purchaseHeaderRows' => (int) $conn->query('SELECT COUNT(*) FROM purchase_headers')->fetchColumn(),
-        'purchaseItemRows' => (int) $conn->query('SELECT COUNT(*) FROM purchase_items')->fetchColumn(),
-        'saleRows' => (int) $conn->query('SELECT COUNT(*) FROM sale')->fetchColumn(),
-        'saleHeaderRows' => (int) $conn->query('SELECT COUNT(*) FROM sale_headers')->fetchColumn(),
-        'saleItemRows' => (int) $conn->query('SELECT COUNT(*) FROM sale_items')->fetchColumn(),
-        'ledgerRows' => $clearCreditData ? (int) $conn->query('SELECT COUNT(*) FROM customer_ledger')->fetchColumn() : 0,
-        'paymentRows' => $clearCreditData ? (int) $conn->query('SELECT COUNT(*) FROM customer_payments')->fetchColumn() : 0,
+    $archiveColumnMigrations = [
+        ['archive_batches', 'storeID', "ALTER TABLE `archive_batches` ADD COLUMN `storeID` int(11) NOT NULL DEFAULT '1' AFTER `batchID`"],
+        ['archive_batches', 'storeName', "ALTER TABLE `archive_batches` ADD COLUMN `storeName` varchar(120) DEFAULT NULL AFTER `storeID`"],
+        ['purchase_archive', 'storeID', "ALTER TABLE `purchase_archive` ADD COLUMN `storeID` int(11) NOT NULL DEFAULT '1' AFTER `batchID`"],
+        ['purchase_headers_archive', 'storeID', "ALTER TABLE `purchase_headers_archive` ADD COLUMN `storeID` int(11) NOT NULL DEFAULT '1' AFTER `batchID`"],
+        ['purchase_items_archive', 'storeID', "ALTER TABLE `purchase_items_archive` ADD COLUMN `storeID` int(11) NOT NULL DEFAULT '1' AFTER `batchID`"],
+        ['sale_archive', 'storeID', "ALTER TABLE `sale_archive` ADD COLUMN `storeID` int(11) NOT NULL DEFAULT '1' AFTER `batchID`"],
+        ['sale_headers_archive', 'storeID', "ALTER TABLE `sale_headers_archive` ADD COLUMN `storeID` int(11) NOT NULL DEFAULT '1' AFTER `batchID`"],
+        ['sale_items_archive', 'storeID', "ALTER TABLE `sale_items_archive` ADD COLUMN `storeID` int(11) NOT NULL DEFAULT '1' AFTER `batchID`"],
+        ['customer_ledger_archive', 'storeID', "ALTER TABLE `customer_ledger_archive` ADD COLUMN `storeID` int(11) NOT NULL DEFAULT '1' AFTER `batchID`"],
+        ['customer_payments_archive', 'storeID', "ALTER TABLE `customer_payments_archive` ADD COLUMN `storeID` int(11) NOT NULL DEFAULT '1' AFTER `batchID`"],
     ];
+    foreach ($archiveColumnMigrations as $migration) {
+        $columnCheckStatement = $conn->query("SHOW COLUMNS FROM `{$migration[0]}` LIKE '{$migration[1]}'");
+        if ($columnCheckStatement->rowCount() === 0) {
+            $conn->exec($migration[2]);
+        }
+    }
+
+    $countSql = [
+        'purchaseRows' => 'SELECT COUNT(*) FROM purchase WHERE storeID = :storeID',
+        'purchaseHeaderRows' => 'SELECT COUNT(*) FROM purchase_headers WHERE storeID = :storeID',
+        'purchaseItemRows' => 'SELECT COUNT(*) FROM purchase_items WHERE storeID = :storeID',
+        'saleRows' => 'SELECT COUNT(*) FROM sale WHERE storeID = :storeID',
+        'saleHeaderRows' => 'SELECT COUNT(*) FROM sale_headers WHERE storeID = :storeID',
+        'saleItemRows' => 'SELECT COUNT(*) FROM sale_items WHERE storeID = :storeID',
+        'ledgerRows' => 'SELECT COUNT(*) FROM customer_ledger WHERE storeID = :storeID',
+        'paymentRows' => 'SELECT COUNT(*) FROM customer_payments WHERE storeID = :storeID',
+    ];
+    $rowCounts = [];
+    foreach ($countSql as $key => $sql) {
+        if (!$clearCreditData && ($key === 'ledgerRows' || $key === 'paymentRows')) {
+            $rowCounts[$key] = 0;
+            continue;
+        }
+        $countStatement = $conn->prepare($sql);
+        $countStatement->execute(['storeID' => $activeStoreID]);
+        $rowCounts[$key] = (int) $countStatement->fetchColumn();
+    }
 
     $totalRows = array_sum($rowCounts);
     if ($totalRows === 0) {
@@ -197,10 +240,12 @@ try {
 
     $conn->beginTransaction();
 
-    $insertBatchSql = 'INSERT INTO archive_batches(archivedByUserID, archivedByUsername, note, purchaseRows, purchaseHeaderRows, purchaseItemRows, saleRows, saleHeaderRows, saleItemRows, ledgerRows, paymentRows)
-        VALUES(:archivedByUserID, :archivedByUsername, :note, :purchaseRows, :purchaseHeaderRows, :purchaseItemRows, :saleRows, :saleHeaderRows, :saleItemRows, :ledgerRows, :paymentRows)';
+    $insertBatchSql = 'INSERT INTO archive_batches(storeID, storeName, archivedByUserID, archivedByUsername, note, purchaseRows, purchaseHeaderRows, purchaseItemRows, saleRows, saleHeaderRows, saleItemRows, ledgerRows, paymentRows)
+        VALUES(:storeID, :storeName, :archivedByUserID, :archivedByUsername, :note, :purchaseRows, :purchaseHeaderRows, :purchaseItemRows, :saleRows, :saleHeaderRows, :saleItemRows, :ledgerRows, :paymentRows)';
     $insertBatchStatement = $conn->prepare($insertBatchSql);
     $insertBatchStatement->execute([
+        'storeID' => $activeStoreID,
+        'storeName' => $activeStoreName,
         'archivedByUserID' => isset($_SESSION['userID']) ? (int) $_SESSION['userID'] : null,
         'archivedByUsername' => isset($_SESSION['username']) ? (string) $_SESSION['username'] : null,
         'note' => $archiveNote !== '' ? $archiveNote : null,
@@ -215,28 +260,28 @@ try {
     ]);
     $batchID = (int) $conn->lastInsertId();
 
-    $conn->exec('INSERT INTO purchase_archive(batchID, purchaseID, itemNumber, purchaseDate, itemName, unitPrice, quantity, vendorName, vendorID, transactionReference) SELECT ' . $batchID . ', purchaseID, itemNumber, purchaseDate, itemName, unitPrice, quantity, vendorName, vendorID, transactionReference FROM purchase');
-    $conn->exec('INSERT INTO purchase_headers_archive(batchID, id, transactionReference, vendorName, purchaseDate, createdAt) SELECT ' . $batchID . ', id, transactionReference, vendorName, purchaseDate, createdAt FROM purchase_headers');
-    $conn->exec('INSERT INTO purchase_items_archive(batchID, purchaseItemID, transactionReference, itemNumber, itemName, quantity, unitPrice, lineTotal, createdAt) SELECT ' . $batchID . ', purchaseItemID, transactionReference, itemNumber, itemName, quantity, unitPrice, lineTotal, createdAt FROM purchase_items');
-    $conn->exec('INSERT INTO sale_archive(batchID, saleID, itemNumber, customerID, customerName, itemName, saleDate, discount, quantity, unitPrice, reason) SELECT ' . $batchID . ', saleID, itemNumber, customerID, customerName, itemName, saleDate, discount, quantity, unitPrice, reason FROM sale');
-    $conn->exec('INSERT INTO sale_headers_archive(batchID, id, saleReference, customerID, customerName, saleDate, amountPaid, createdAt) SELECT ' . $batchID . ', id, saleReference, customerID, customerName, saleDate, amountPaid, createdAt FROM sale_headers');
-    $conn->exec('INSERT INTO sale_items_archive(batchID, saleItemID, saleReference, itemNumber, itemName, discount, reason, quantity, unitPrice, lineTotal, createdAt) SELECT ' . $batchID . ', saleItemID, saleReference, itemNumber, itemName, discount, reason, quantity, unitPrice, lineTotal, createdAt FROM sale_items');
+    $conn->exec('INSERT INTO purchase_archive(batchID, storeID, purchaseID, itemNumber, purchaseDate, itemName, unitPrice, quantity, vendorName, vendorID, transactionReference) SELECT ' . $batchID . ', storeID, purchaseID, itemNumber, purchaseDate, itemName, unitPrice, quantity, vendorName, vendorID, transactionReference FROM purchase WHERE storeID = ' . $activeStoreID);
+    $conn->exec('INSERT INTO purchase_headers_archive(batchID, storeID, id, transactionReference, vendorName, purchaseDate, createdAt) SELECT ' . $batchID . ', storeID, id, transactionReference, vendorName, purchaseDate, createdAt FROM purchase_headers WHERE storeID = ' . $activeStoreID);
+    $conn->exec('INSERT INTO purchase_items_archive(batchID, storeID, purchaseItemID, transactionReference, itemNumber, itemName, quantity, unitPrice, lineTotal, createdAt) SELECT ' . $batchID . ', storeID, purchaseItemID, transactionReference, itemNumber, itemName, quantity, unitPrice, lineTotal, createdAt FROM purchase_items WHERE storeID = ' . $activeStoreID);
+    $conn->exec('INSERT INTO sale_archive(batchID, storeID, saleID, itemNumber, customerID, customerName, itemName, saleDate, discount, quantity, unitPrice, reason) SELECT ' . $batchID . ', storeID, saleID, itemNumber, customerID, customerName, itemName, saleDate, discount, quantity, unitPrice, reason FROM sale WHERE storeID = ' . $activeStoreID);
+    $conn->exec('INSERT INTO sale_headers_archive(batchID, storeID, id, saleReference, customerID, customerName, saleDate, amountPaid, createdAt) SELECT ' . $batchID . ', storeID, id, saleReference, customerID, customerName, saleDate, amountPaid, createdAt FROM sale_headers WHERE storeID = ' . $activeStoreID);
+    $conn->exec('INSERT INTO sale_items_archive(batchID, storeID, saleItemID, saleReference, itemNumber, itemName, discount, reason, quantity, unitPrice, lineTotal, createdAt) SELECT ' . $batchID . ', storeID, saleItemID, saleReference, itemNumber, itemName, discount, reason, quantity, unitPrice, lineTotal, createdAt FROM sale_items WHERE storeID = ' . $activeStoreID);
 
     if ($clearCreditData) {
-        $conn->exec('INSERT INTO customer_ledger_archive(batchID, ledgerID, customerID, saleID, entryType, amount, balanceAfter, entryDate, note) SELECT ' . $batchID . ', ledgerID, customerID, saleID, entryType, amount, balanceAfter, entryDate, note FROM customer_ledger');
-        $conn->exec('INSERT INTO customer_payments_archive(batchID, paymentID, customerID, saleID, amount, paymentDate, paymentMethod, referenceNumber, note, receiptNumber, saleReference) SELECT ' . $batchID . ', paymentID, customerID, saleID, amount, paymentDate, paymentMethod, referenceNumber, note, receiptNumber, saleReference FROM customer_payments');
+        $conn->exec('INSERT INTO customer_ledger_archive(batchID, storeID, ledgerID, customerID, saleID, entryType, amount, balanceAfter, entryDate, note) SELECT ' . $batchID . ', storeID, ledgerID, customerID, saleID, entryType, amount, balanceAfter, entryDate, note FROM customer_ledger WHERE storeID = ' . $activeStoreID);
+        $conn->exec('INSERT INTO customer_payments_archive(batchID, storeID, paymentID, customerID, saleID, amount, paymentDate, paymentMethod, referenceNumber, note, receiptNumber, saleReference) SELECT ' . $batchID . ', storeID, paymentID, customerID, saleID, amount, paymentDate, paymentMethod, referenceNumber, note, receiptNumber, saleReference FROM customer_payments WHERE storeID = ' . $activeStoreID);
     }
 
-    $conn->exec('DELETE FROM purchase_items');
-    $conn->exec('DELETE FROM purchase_headers');
-    $conn->exec('DELETE FROM purchase');
-    $conn->exec('DELETE FROM sale_items');
-    $conn->exec('DELETE FROM sale_headers');
-    $conn->exec('DELETE FROM sale');
+    $conn->exec('DELETE FROM purchase_items WHERE storeID = ' . $activeStoreID);
+    $conn->exec('DELETE FROM purchase_headers WHERE storeID = ' . $activeStoreID);
+    $conn->exec('DELETE FROM purchase WHERE storeID = ' . $activeStoreID);
+    $conn->exec('DELETE FROM sale_items WHERE storeID = ' . $activeStoreID);
+    $conn->exec('DELETE FROM sale_headers WHERE storeID = ' . $activeStoreID);
+    $conn->exec('DELETE FROM sale WHERE storeID = ' . $activeStoreID);
 
     if ($clearCreditData) {
-        $conn->exec('DELETE FROM customer_ledger');
-        $conn->exec('DELETE FROM customer_payments');
+        $conn->exec('DELETE FROM customer_ledger WHERE storeID = ' . $activeStoreID);
+        $conn->exec('DELETE FROM customer_payments WHERE storeID = ' . $activeStoreID);
     }
 
     $conn->commit();

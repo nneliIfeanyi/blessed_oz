@@ -1,6 +1,11 @@
 <?php
+session_start();
 require_once('../../inc/config/constants.php');
 require_once('../../inc/config/db.php');
+require_once('../../inc/store.php');
+
+ensureActiveStoreSession($conn);
+$activeStoreID = (int) $_SESSION['activeStoreID'];
 
 header('Content-Type: application/json');
 
@@ -51,6 +56,7 @@ if (isset($_POST['saleItems']) || isset($_POST['saleDetailsItemNumber'])) {
 	try {
 		$conn->exec("CREATE TABLE IF NOT EXISTS sale_headers (
 			id INT(11) NOT NULL AUTO_INCREMENT,
+			storeID INT(11) NOT NULL DEFAULT '1',
 			saleReference VARCHAR(50) NOT NULL,
 			customerID INT(11) NOT NULL,
 			customerName VARCHAR(255) DEFAULT NULL,
@@ -63,6 +69,7 @@ if (isset($_POST['saleItems']) || isset($_POST['saleDetailsItemNumber'])) {
 
 		$conn->exec("CREATE TABLE IF NOT EXISTS sale_items (
 			saleItemID INT(11) NOT NULL AUTO_INCREMENT,
+			storeID INT(11) NOT NULL DEFAULT '1',
 			saleReference VARCHAR(50) NOT NULL,
 			itemNumber VARCHAR(255) NOT NULL,
 			itemName VARCHAR(255) NOT NULL,
@@ -81,9 +88,18 @@ if (isset($_POST['saleItems']) || isset($_POST['saleDetailsItemNumber'])) {
 			$conn->exec("ALTER TABLE sale ADD COLUMN saleReference VARCHAR(255) DEFAULT NULL");
 		}
 
-		$customerSql = 'SELECT fullName FROM customer WHERE customerID = :customerID';
+		$saleHeadersStoreColumn = $conn->query("SHOW COLUMNS FROM sale_headers LIKE 'storeID'");
+		if ($saleHeadersStoreColumn->rowCount() === 0) {
+			$conn->exec("ALTER TABLE sale_headers ADD COLUMN storeID INT(11) NOT NULL DEFAULT '1' AFTER id");
+		}
+		$saleItemsStoreColumn = $conn->query("SHOW COLUMNS FROM sale_items LIKE 'storeID'");
+		if ($saleItemsStoreColumn->rowCount() === 0) {
+			$conn->exec("ALTER TABLE sale_items ADD COLUMN storeID INT(11) NOT NULL DEFAULT '1' AFTER saleItemID");
+		}
+
+		$customerSql = 'SELECT fullName FROM customer WHERE customerID = :customerID AND storeID = :storeID';
 		$customerStatement = $conn->prepare($customerSql);
-		$customerStatement->execute(['customerID' => $customerID]);
+		$customerStatement->execute(['customerID' => $customerID, 'storeID' => $activeStoreID]);
 		if ($customerStatement->rowCount() < 1) {
 			echo json_encode(['success' => false, 'message' => 'Customer does not exist.']);
 			exit();
@@ -107,9 +123,9 @@ if (isset($_POST['saleItems']) || isset($_POST['saleDetailsItemNumber'])) {
 		}
 		$totalSaleAmount = 0;
 
-		$insertHeaderSql = 'INSERT INTO sale_headers(saleReference, customerID, customerName, saleDate, amountPaid, createdAt) VALUES(:saleReference, :customerID, :customerName, :saleDate, :amountPaid, NOW())';
+		$insertHeaderSql = 'INSERT INTO sale_headers(storeID, saleReference, customerID, customerName, saleDate, amountPaid, createdAt) VALUES(:storeID, :saleReference, :customerID, :customerName, :saleDate, :amountPaid, NOW())';
 		$insertHeaderStatement = $conn->prepare($insertHeaderSql);
-		$insertHeaderStatement->execute(['saleReference' => $saleReference, 'customerID' => $customerID, 'customerName' => $customerName, 'saleDate' => $saleDate, 'amountPaid' => (float) $amountPaid]);
+		$insertHeaderStatement->execute(['storeID' => $activeStoreID, 'saleReference' => $saleReference, 'customerID' => $customerID, 'customerName' => $customerName, 'saleDate' => $saleDate, 'amountPaid' => (float) $amountPaid]);
 
 		foreach ($saleItems as $itemData) {
 			$itemNumber = isset($itemData['itemNumber']) ? trim((string) $itemData['itemNumber']) : '';
@@ -132,9 +148,9 @@ if (isset($_POST['saleItems']) || isset($_POST['saleDetailsItemNumber'])) {
 				throw new Exception('Please enter a valid discount for each row.');
 			}
 
-			$stockSql = 'SELECT stock FROM item WHERE itemNumber = :itemNumber';
+			$stockSql = 'SELECT stock FROM item WHERE itemNumber = :itemNumber AND storeID = :storeID';
 			$stockStatement = $conn->prepare($stockSql);
-			$stockStatement->execute(['itemNumber' => $itemNumber]);
+			$stockStatement->execute(['itemNumber' => $itemNumber, 'storeID' => $activeStoreID]);
 			if ($stockStatement->rowCount() < 1) {
 				throw new Exception('Item does not exist in DB.');
 			}
@@ -146,30 +162,30 @@ if (isset($_POST['saleItems']) || isset($_POST['saleDetailsItemNumber'])) {
 			}
 
 			$newStock = $currentStock - $quantityInt;
-			$stockUpdateSql = 'UPDATE item SET stock = :stock WHERE itemNumber = :itemNumber';
+			$stockUpdateSql = 'UPDATE item SET stock = :stock WHERE itemNumber = :itemNumber AND storeID = :storeID';
 			$stockUpdateStatement = $conn->prepare($stockUpdateSql);
-			$stockUpdateStatement->execute(['stock' => $newStock, 'itemNumber' => $itemNumber]);
+			$stockUpdateStatement->execute(['stock' => $newStock, 'itemNumber' => $itemNumber, 'storeID' => $activeStoreID]);
 
 			$lineTotal = round(((float) $unitPrice * ((100 - (float) $discount) / 100) * $quantityInt), 2);
 			$totalSaleAmount += $lineTotal;
 
-			$insertSaleItemSql = 'INSERT INTO sale_items(saleReference, itemNumber, itemName, discount, quantity, unitPrice, reason, lineTotal, createdAt) VALUES(:saleReference, :itemNumber, :itemName, :discount, :quantity, :unitPrice, :reason, :lineTotal, NOW())';
+			$insertSaleItemSql = 'INSERT INTO sale_items(storeID, saleReference, itemNumber, itemName, discount, quantity, unitPrice, reason, lineTotal, createdAt) VALUES(:storeID, :saleReference, :itemNumber, :itemName, :discount, :quantity, :unitPrice, :reason, :lineTotal, NOW())';
 			$insertSaleItemStatement = $conn->prepare($insertSaleItemSql);
-			$insertSaleItemStatement->execute(['saleReference' => $saleReference, 'itemNumber' => $itemNumber, 'itemName' => $itemName, 'discount' => (float) $discount, 'quantity' => $quantityInt, 'unitPrice' => (float) $unitPrice, 'reason' => $reason, 'lineTotal' => $lineTotal]);
+			$insertSaleItemStatement->execute(['storeID' => $activeStoreID, 'saleReference' => $saleReference, 'itemNumber' => $itemNumber, 'itemName' => $itemName, 'discount' => (float) $discount, 'quantity' => $quantityInt, 'unitPrice' => (float) $unitPrice, 'reason' => $reason, 'lineTotal' => $lineTotal]);
 		}
 
 		$pendingBalance = round(max(0, $totalSaleAmount - (float) $amountPaid), 2);
 		if ($pendingBalance > 0) {
 			try {
-				$ledgerBalanceSql = 'SELECT COALESCE(balanceAfter, 0) AS balanceAfter FROM customer_ledger WHERE customerID = :customerID ORDER BY entryDate DESC, ledgerID DESC LIMIT 1';
+				$ledgerBalanceSql = 'SELECT COALESCE(balanceAfter, 0) AS balanceAfter FROM customer_ledger WHERE customerID = :customerID AND storeID = :storeID ORDER BY entryDate DESC, ledgerID DESC LIMIT 1';
 				$ledgerBalanceStatement = $conn->prepare($ledgerBalanceSql);
-				$ledgerBalanceStatement->execute(['customerID' => $customerID]);
+				$ledgerBalanceStatement->execute(['customerID' => $customerID, 'storeID' => $activeStoreID]);
 				$lastBalance = $ledgerBalanceStatement->fetch(PDO::FETCH_ASSOC);
 				$currentBalance = isset($lastBalance['balanceAfter']) ? (float) $lastBalance['balanceAfter'] : 0;
 				$newLedgerBalance = round($currentBalance + $pendingBalance, 2);
-				$ledgerInsertSql = 'INSERT INTO customer_ledger(customerID, saleID, entryType, amount, balanceAfter, entryDate, note) VALUES(:customerID, :saleID, :entryType, :amount, :balanceAfter, :entryDate, :note)';
+				$ledgerInsertSql = 'INSERT INTO customer_ledger(storeID, customerID, saleID, entryType, amount, balanceAfter, entryDate, note) VALUES(:storeID, :customerID, :saleID, :entryType, :amount, :balanceAfter, :entryDate, :note)';
 				$ledgerInsertStatement = $conn->prepare($ledgerInsertSql);
-				$ledgerInsertStatement->execute(['customerID' => $customerID, 'saleID' => null, 'entryType' => 'Sale', 'amount' => $pendingBalance, 'balanceAfter' => $newLedgerBalance, 'entryDate' => $saleDate, 'note' => 'Sale on credit - ' . $saleReference]);
+				$ledgerInsertStatement->execute(['storeID' => $activeStoreID, 'customerID' => $customerID, 'saleID' => null, 'entryType' => 'Sale', 'amount' => $pendingBalance, 'balanceAfter' => $newLedgerBalance, 'entryDate' => $saleDate, 'note' => 'Sale on credit - ' . $saleReference]);
 			} catch (PDOException $e) {
 				// Credit tables may not be available yet; still allow the sale to be recorded.
 			}

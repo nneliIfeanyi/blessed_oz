@@ -7,33 +7,23 @@ if (!isset($_SESSION['loggedIn'])) {
 
 require_once('inc/config/constants.php');
 require_once('inc/config/db.php');
+require_once('inc/store.php');
 require_once('inc/header.html');
 
+ensureActiveStoreSession($conn);
+$activeStoreID = (int) $_SESSION['activeStoreID'];
+
 $settingsFile = 'inc/config/site_settings.json';
-$settings = [
-    'siteName' => 'Inventory System',
-    'lowStockThreshold' => 5,
-    'enableProductDescription' => true,
-    'enableProductImage' => true
-];
-if (file_exists($settingsFile)) {
-    $json = file_get_contents($settingsFile);
-    if ($json !== false) {
-        $decoded = json_decode($json, true);
-        if (is_array($decoded)) {
-            $settings = array_merge($settings, $decoded);
-        }
-    }
-}
+$settings = getStoreSettings($conn, $activeStoreID, $settingsFile);
 
 $lowStockThreshold = max(0, (int) $settings['lowStockThreshold']);
 $lowStockItems = [];
 $pageError = '';
 
 try {
-    $lowStockItemsSql = 'SELECT itemNumber, itemName, stock, unitAsSold, unitPrice, status FROM item WHERE stock <= :threshold ORDER BY stock ASC, itemName ASC';
+    $lowStockItemsSql = 'SELECT itemNumber, itemName, stock, unitAsSold, unitPrice, status FROM item WHERE stock <= :threshold AND storeID = :storeID ORDER BY stock ASC, itemName ASC';
     $lowStockItemsStatement = $conn->prepare($lowStockItemsSql);
-    $lowStockItemsStatement->execute(['threshold' => $lowStockThreshold]);
+    $lowStockItemsStatement->execute(['threshold' => $lowStockThreshold, 'storeID' => $activeStoreID]);
     $lowStockItems = $lowStockItemsStatement->fetchAll(PDO::FETCH_ASSOC);
 } catch (PDOException $e) {
     $pageError = 'Low stock data is unavailable right now.';

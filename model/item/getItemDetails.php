@@ -1,12 +1,12 @@
 <?php
-	$itemDetailsSql = 'SELECT * FROM item';
-	$itemDetailsStatement = $conn->prepare($itemDetailsSql);
-	$itemDetailsStatement->execute();
-	
-	if($itemDetailsStatement->rowCount() > 0) {
-		while($row = $itemDetailsStatement->fetch(PDO::FETCH_ASSOC)) {
-			echo '<option>' . $row['itemName'] . '</option>';
-		}
+$activeStoreID = isset($_SESSION['activeStoreID']) ? (int) $_SESSION['activeStoreID'] : 1;
+$itemDetailsSql = 'SELECT * FROM item WHERE storeID = :storeID';
+$itemDetailsStatement = $conn->prepare($itemDetailsSql);
+$itemDetailsStatement->execute(['storeID' => $activeStoreID]);
+
+if ($itemDetailsStatement->rowCount() > 0) {
+	while ($row = $itemDetailsStatement->fetch(PDO::FETCH_ASSOC)) {
+		echo '<option>' . $row['itemName'] . '</option>';
 	}
-	$itemDetailsStatement->closeCursor();
-?>
+}
+$itemDetailsStatement->closeCursor();

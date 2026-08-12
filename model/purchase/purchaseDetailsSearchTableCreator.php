@@ -1,14 +1,19 @@
 <?php
+session_start();
 require_once('../../inc/config/constants.php');
 require_once('../../inc/config/db.php');
+require_once('../../inc/store.php');
+
+ensureActiveStoreSession($conn);
+$activeStoreID = (int) $_SESSION['activeStoreID'];
 
 $uPrice = 0;
 $qty = 0;
 $totalPrice = 0;
 
-$purchaseDetailsSearchSql = 'SELECT p.*, COALESCE(i.unitAsSold, "pcs") AS unitAsSold FROM purchase p LEFT JOIN item i ON i.itemNumber = p.itemNumber';
+$purchaseDetailsSearchSql = 'SELECT p.*, COALESCE(i.unitAsSold, "pcs") AS unitAsSold FROM purchase p LEFT JOIN item i ON i.itemNumber = p.itemNumber AND i.storeID = p.storeID WHERE p.storeID = :storeID';
 $purchaseDetailsSearchStatement = $conn->prepare($purchaseDetailsSearchSql);
-$purchaseDetailsSearchStatement->execute();
+$purchaseDetailsSearchStatement->execute(['storeID' => $activeStoreID]);
 
 $output = '<table id="purchaseDetailsTable" class="table table-sm table-striped table-bordered table-hover" style="width:100%">
 				<thead>

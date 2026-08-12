@@ -68,3 +68,11 @@ Current status: **Partially ready** for a small or medium business pilot, but **
 
 ## Acknowledgments
 * Inspired by many similar projects online
+
+
+
+1. Schema changes plus backfill to storeID = 1
+2. Session default store and navbar switcher
+3. Core transaction scoping: dashboard, items, customers, vendors
+4. Purchases, sales, credits, reports
+5. Store-specific settings and branch management

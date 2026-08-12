@@ -1,6 +1,11 @@
 <?php
+session_start();
 require_once('../../inc/config/constants.php');
 require_once('../../inc/config/db.php');
+require_once('../../inc/store.php');
+
+ensureActiveStoreSession($conn);
+$activeStoreID = (int) $_SESSION['activeStoreID'];
 
 $settingsFile = '../../inc/config/site_settings.json';
 $settings = ['enableProductDescription' => true];
@@ -14,9 +19,9 @@ if (file_exists($settingsFile)) {
 	}
 }
 
-$itemDetailsSearchSql = 'SELECT * FROM item';
+$itemDetailsSearchSql = 'SELECT * FROM item WHERE storeID = :storeID';
 $itemDetailsSearchStatement = $conn->prepare($itemDetailsSearchSql);
-$itemDetailsSearchStatement->execute();
+$itemDetailsSearchStatement->execute(['storeID' => $activeStoreID]);
 
 $descriptionHeader = !empty($settings['enableProductDescription']) ? '<th>Description</th>' : '';
 $output = '<table id="itemReportsTable" class="table table-sm table-striped table-bordered table-hover" style="width:100%">

@@ -1,10 +1,15 @@
 <?php
+session_start();
 require_once('../../inc/config/constants.php');
 require_once('../../inc/config/db.php');
+require_once('../../inc/store.php');
 
-$vendorDetailsSearchSql = 'SELECT * FROM vendor';
+ensureActiveStoreSession($conn);
+$activeStoreID = (int) $_SESSION['activeStoreID'];
+
+$vendorDetailsSearchSql = 'SELECT * FROM vendor WHERE storeID = :storeID';
 $vendorDetailsSearchStatement = $conn->prepare($vendorDetailsSearchSql);
-$vendorDetailsSearchStatement->execute();
+$vendorDetailsSearchStatement->execute(['storeID' => $activeStoreID]);
 
 $output = '<table id="vendorDetailsTable" class="table table-sm table-striped table-bordered table-hover" style="width:100%">
 				<thead>

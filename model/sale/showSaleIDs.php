@@ -1,6 +1,11 @@
 <?php
+session_start();
 require_once('../../inc/config/constants.php');
 require_once('../../inc/config/db.php');
+require_once('../../inc/store.php');
+
+ensureActiveStoreSession($conn);
+$activeStoreID = (int) $_SESSION['activeStoreID'];
 
 // Check if the POST request is received and if so, execute the script
 if (isset($_POST['textBoxValue'])) {
@@ -13,8 +18,8 @@ if (isset($_POST['textBoxValue'])) {
 	}
 
 	// Construct the SQL query to get the transaction ID
-	$sql = 'SELECT saleReference FROM sale_headers WHERE saleReference LIKE ?';
-	$params = [$saleIDString];
+	$sql = 'SELECT saleReference FROM sale_headers WHERE saleReference LIKE ? AND storeID = ?';
+	$params = [$saleIDString, $activeStoreID];
 	if ($customerID !== '' && ctype_digit($customerID)) {
 		$sql .= ' AND customerID = ?';
 		$params[] = (int) $customerID;

@@ -7,7 +7,11 @@ if (!isset($_SESSION['loggedIn'])) {
 
 require_once('inc/config/constants.php');
 require_once('inc/config/db.php');
+require_once('inc/store.php');
 require_once('inc/header.html');
+
+ensureActiveStoreSession($conn);
+$activeStoreID = (int) $_SESSION['activeStoreID'];
 
 function formatCurrencyAmount($value)
 {
@@ -18,8 +22,9 @@ $creditors = [];
 $pageError = '';
 
 try {
-    $creditorsSql = 'SELECT sh.saleReference, sh.customerID, sh.customerName, sh.saleDate, ROUND(COALESCE(SUM(si.lineTotal), 0), 2) AS amountDue, ROUND(COALESCE(sh.amountPaid, 0), 2) AS amountPaid, ROUND(COALESCE(SUM(si.lineTotal), 0) - COALESCE(sh.amountPaid, 0), 2) AS balance FROM sale_headers sh LEFT JOIN sale_items si ON si.saleReference = sh.saleReference GROUP BY sh.id, sh.saleReference, sh.customerID, sh.customerName, sh.saleDate, sh.amountPaid HAVING balance > 0 ORDER BY sh.saleDate DESC, sh.id DESC';
-    $creditorsStatement = $conn->query($creditorsSql);
+    $creditorsSql = 'SELECT sh.saleReference, sh.customerID, sh.customerName, sh.saleDate, ROUND(COALESCE(SUM(si.lineTotal), 0), 2) AS amountDue, ROUND(COALESCE(sh.amountPaid, 0), 2) AS amountPaid, ROUND(COALESCE(SUM(si.lineTotal), 0) - COALESCE(sh.amountPaid, 0), 2) AS balance FROM sale_headers sh LEFT JOIN sale_items si ON si.saleReference = sh.saleReference AND si.storeID = sh.storeID WHERE sh.storeID = :storeID GROUP BY sh.id, sh.saleReference, sh.customerID, sh.customerName, sh.saleDate, sh.amountPaid HAVING balance > 0 ORDER BY sh.saleDate DESC, sh.id DESC';
+    $creditorsStatement = $conn->prepare($creditorsSql);
+    $creditorsStatement->execute(['storeID' => $activeStoreID]);
     $creditors = $creditorsStatement->fetchAll(PDO::FETCH_ASSOC);
 } catch (PDOException $e) {
     $pageError = 'Creditor data is unavailable right now.';
@@ -79,6 +84,17 @@ try {
                                 echo '<tr><td colspan="7" class="text-muted">No outstanding creditors found.</td></tr>';
                             } ?>
                         </tbody>
+                        <tfoot>
+                            <tr>
+                                <th>Total</th>
+                                <th></th>
+                                <th></th>
+                                <th></th>
+                                <th></th>
+                                <th></th>
+                                <th></th>
+                            </tr>
+                        </tfoot>
                     </table>
                 </div>
             </div>
@@ -146,12 +162,86 @@ try {
             return number.toFixed(2);
         }
 
+        function parseAmount(value) {
+            if (typeof value === 'string') {
+                value = value.replace(/[^0-9.-]/g, '');
+            }
+            var parsed = parseFloat(value);
+            return isNaN(parsed) ? 0 : parsed;
+        }
+
         $(function() {
             if ($.fn.DataTable.isDataTable('#creditorsListTable') === false) {
                 $('#creditorsListTable').DataTable({
+                    dom: 'lBfrtip',
                     order: [
                         [5, 'desc']
-                    ]
+                    ],
+                    buttons: [
+                        'copy',
+                        {
+                            extend: 'csv',
+                            footer: true,
+                            title: 'Creditors List'
+                        },
+                        {
+                            extend: 'excel',
+                            footer: true,
+                            title: 'Creditors List'
+                        },
+                        {
+                            extend: 'pdf',
+                            footer: true,
+                            orientation: 'landscape',
+                            pageSize: 'LEGAL',
+                            title: 'Creditors List',
+                            exportOptions: {
+                                columns: [0, 1, 2, 3, 4, 5]
+                            }
+                        },
+                        {
+                            extend: 'print',
+                            footer: true,
+                            title: 'Creditors List',
+                            exportOptions: {
+                                columns: [0, 1, 2, 3, 4, 5]
+                            }
+                        }
+                    ],
+                    footerCallback: function(row, data, start, end, display) {
+                        var api = this.api();
+
+                        var dueTotal = api.column(2).data().reduce(function(a, b) {
+                            return parseAmount(a) + parseAmount(b);
+                        }, 0);
+                        var dueFilteredTotal = api.column(2, {
+                            page: 'current'
+                        }).data().reduce(function(a, b) {
+                            return parseAmount(a) + parseAmount(b);
+                        }, 0);
+
+                        var paidTotal = api.column(3).data().reduce(function(a, b) {
+                            return parseAmount(a) + parseAmount(b);
+                        }, 0);
+                        var paidFilteredTotal = api.column(3, {
+                            page: 'current'
+                        }).data().reduce(function(a, b) {
+                            return parseAmount(a) + parseAmount(b);
+                        }, 0);
+
+                        var balanceTotal = api.column(4).data().reduce(function(a, b) {
+                            return parseAmount(a) + parseAmount(b);
+                        }, 0);
+                        var balanceFilteredTotal = api.column(4, {
+                            page: 'current'
+                        }).data().reduce(function(a, b) {
+                            return parseAmount(a) + parseAmount(b);
+                        }, 0);
+
+                        $(api.column(2).footer()).html(formatCreditAmount(dueFilteredTotal) + ' (' + formatCreditAmount(dueTotal) + ' total)');
+                        $(api.column(3).footer()).html(formatCreditAmount(paidFilteredTotal) + ' (' + formatCreditAmount(paidTotal) + ' total)');
+                        $(api.column(4).footer()).html(formatCreditAmount(balanceFilteredTotal) + ' (' + formatCreditAmount(balanceTotal) + ' total)');
+                    }
                 });
             }
 

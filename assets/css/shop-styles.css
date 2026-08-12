@@ -208,3 +208,51 @@ ul.suggestionsList li {
   text-decoration: none;
   outline: none;
 }
+
+.compact-form-row .form-group {
+  margin-bottom: 0.85rem;
+}
+
+.compact-image-slot {
+  display: flex;
+  align-items: flex-end;
+}
+
+.compact-image-slot #imageContainer img {
+  max-height: 88px;
+  width: auto;
+  border-radius: 6px;
+}
+
+.unit-price-group label {
+  display: block;
+}
+
+.unit-price-inline-wrap .input-group-text {
+  border-left: 0;
+}
+
+.unit-badge-inline {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 52px;
+  padding: 0.15rem 0.55rem;
+  border-radius: 0;
+  background-color: #eef6ff;
+  color: #0b5cab;
+  font-size: 0.72rem;
+  font-weight: 700;
+  line-height: 1.1;
+  text-transform: uppercase;
+}
+
+@media (max-width: 767.98px) {
+  .compact-image-slot {
+    align-items: flex-start;
+  }
+
+  .compact-image-slot #imageContainer img {
+    max-height: 64px;
+  }
+}

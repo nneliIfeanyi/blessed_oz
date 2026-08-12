@@ -1,6 +1,11 @@
 <?php
+session_start();
 require_once('../../inc/config/constants.php');
 require_once('../../inc/config/db.php');
+require_once('../../inc/store.php');
+
+ensureActiveStoreSession($conn);
+$activeStoreID = (int) $_SESSION['activeStoreID'];
 
 function getAvailableColumns($conn, $table)
 {
@@ -48,6 +53,11 @@ if (isset($_POST['customerDetailsCustomerFullName'])) {
 		$availableColumns = getAvailableColumns($conn, 'customer');
 		$insertColumns = ['fullName', 'email', 'mobile', 'address', 'status'];
 		$insertData = ['fullName' => $fullName, 'email' => $email, 'mobile' => $mobile, 'address' => $address, 'status' => $status];
+
+		if (in_array('storeID', $availableColumns)) {
+			$insertColumns[] = 'storeID';
+			$insertData['storeID'] = $activeStoreID;
+		}
 
 		// if (in_array('phone2', $availableColumns)) {
 		// 	$insertColumns[] = 'phone2';
