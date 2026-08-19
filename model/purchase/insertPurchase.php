@@ -88,7 +88,19 @@ if (isset($_POST['purchaseItems']) || isset($_POST['purchaseDetailsItemNumber'])
 		$vendorID = $vendorRow['vendorID'];
 
 		$conn->beginTransaction();
-		$transactionReference = 'TXN-' . date('YmdHis') . '-' . substr(strtoupper(md5(uniqid('', true))), 0, 6);
+		$transactionReference = '';
+		$transactionReferenceCheck = $conn->prepare('SELECT COUNT(*) FROM (SELECT saleReference AS transactionReference FROM sale_headers WHERE saleReference = :transactionReference UNION ALL SELECT transactionReference FROM purchase_headers WHERE transactionReference = :transactionReference) AS existingTransactions');
+		for ($attempt = 0; $attempt < 20; $attempt++) {
+			$candidateReference = 'TXN-' . str_pad((string) random_int(0, 99999), 5, '0', STR_PAD_LEFT);
+			$transactionReferenceCheck->execute(['transactionReference' => $candidateReference]);
+			if ((int) $transactionReferenceCheck->fetchColumn() === 0) {
+				$transactionReference = $candidateReference;
+				break;
+			}
+		}
+		if ($transactionReference === '') {
+			throw new Exception('Unable to generate a unique transaction ID. Please try again.');
+		}
 
 		$insertHeaderSql = 'INSERT INTO purchase_headers(storeID, transactionReference, vendorName, purchaseDate, createdAt) VALUES(:storeID, :transactionReference, :vendorName, :purchaseDate, NOW())';
 		$insertHeaderStatement = $conn->prepare($insertHeaderSql);

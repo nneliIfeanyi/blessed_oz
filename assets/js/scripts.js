@@ -181,6 +181,36 @@ $(document).ready(function () {
 	// Initiate tooltips
 	$('.invTooltip').tooltip();
 
+	$(document).on('click', '.transaction-id-copy', function () {
+		var transactionID = String($(this).data('transaction-id') || '').trim();
+		if (transactionID === '') {
+			showToastMessage('Transaction ID is unavailable to copy.', '', 'warning');
+			return;
+		}
+
+		function showCopyResult(wasCopied) {
+			showToastMessage(
+				wasCopied ? 'Transaction ID copied: ' + transactionID : 'Unable to copy the transaction ID. Please copy it manually.',
+				'',
+				wasCopied ? 'success' : 'danger'
+			);
+		}
+
+		if (navigator.clipboard && window.isSecureContext) {
+			navigator.clipboard.writeText(transactionID).then(function () {
+				showCopyResult(true);
+			}).catch(function () {
+				showCopyResult(false);
+			});
+			return;
+		}
+
+		var copyInput = $('<textarea>').val(transactionID).css({ position: 'fixed', opacity: 0 }).appendTo('body').select();
+		var wasCopied = document.execCommand('copy');
+		copyInput.remove();
+		showCopyResult(wasCopied);
+	});
+
 	// Refresh dashboard cards from the database
 	$('#refreshDashboardBtn').on('click', function () {
 		var $btn = $(this);
@@ -286,6 +316,10 @@ $(document).ready(function () {
 		addPurchaseItemRow();
 	});
 
+	$('#purchaseDetailsForm').on('reset', function () {
+		setTimeout(calculatePurchaseItemsGrandTotal, 0);
+	});
+
 	// Listen to sale add button
 	$('#addSaleButton').on('click', function () {
 		addSale();
@@ -293,6 +327,10 @@ $(document).ready(function () {
 
 	$('#addSaleItemRowButton').on('click', function () {
 		addSaleItemRow();
+	});
+
+	$('#saleDetailsForm').on('reset', function () {
+		setTimeout(calculateSaleItemsGrandTotal, 0);
 	});
 
 	// Listen to update button in item details tab
@@ -315,9 +353,17 @@ $(document).ready(function () {
 		updatePurchase();
 	});
 
+	$('#loadPurchaseTransactionButton').on('click', function () {
+		getPurchaseDetailsToPopulate();
+	});
+
 	// Listen to update button in sale details tab
 	$('#updateSaleDetailsButton').on('click', function () {
 		updateSale();
+	});
+
+	$('#loadSaleTransactionButton').on('click', function () {
+		getSaleDetailsToPopulate();
 	});
 
 	// Credit book actions
@@ -1400,11 +1446,12 @@ function bindPurchaseItemRowEvents() {
 		});
 		row.find('.purchase-item-number').attr('id', 'purchaseItemNumber_' + $('.purchase-item-row').index(row));
 		row.find('.purchase-item-number-suggestions').attr('id', 'purchaseItemNumberSuggestions_' + $('.purchase-item-row').index(row));
-		row.find('.purchase-item-quantity, .purchase-item-unit-price').off('change').on('change', function () {
+		row.find('.purchase-item-quantity, .purchase-item-unit-price').off('input change').on('input change', function () {
 			calculatePurchaseItemRowTotal(row);
 		});
 		row.find('.remove-purchase-item-row').off('click').on('click', function () {
 			row.remove();
+			calculatePurchaseItemsGrandTotal();
 		});
 	});
 }
@@ -1445,6 +1492,15 @@ function calculatePurchaseItemRowTotal(row) {
 	var quantity = Number(row.find('.purchase-item-quantity').val()) || 0;
 	var unitPrice = Number(row.find('.purchase-item-unit-price').val()) || 0;
 	row.find('.purchase-item-total').val((unitPrice * quantity).toFixed(2));
+	calculatePurchaseItemsGrandTotal();
+}
+
+function calculatePurchaseItemsGrandTotal() {
+	var grandTotal = 0;
+	$('.purchase-item-total').each(function () {
+		grandTotal += Number($(this).val()) || 0;
+	});
+	$('#purchaseItemsGrandTotal').val(grandTotal.toFixed(2));
 }
 
 var isPurchaseSubmitInProgress = false;
@@ -1589,11 +1645,12 @@ function bindSaleItemRowEvents() {
 		});
 		row.find('.sale-item-number').attr('id', 'saleItemNumber_' + $('.sale-item-row').index(row));
 		row.find('.sale-item-number-suggestions').attr('id', 'saleItemNumberSuggestions_' + $('.sale-item-row').index(row));
-		row.find('.sale-item-quantity, .sale-item-unit-price, .sale-item-discount').off('change').on('change', function () {
+		row.find('.sale-item-quantity, .sale-item-unit-price, .sale-item-discount').off('input change').on('input change', function () {
 			calculateSaleItemRowTotal(row);
 		});
 		row.find('.remove-sale-item-row').off('click').on('click', function () {
 			row.remove();
+			calculateSaleItemsGrandTotal();
 		});
 	});
 }
@@ -1638,6 +1695,15 @@ function calculateSaleItemRowTotal(row) {
 	var unitPrice = Number(row.find('.sale-item-unit-price').val()) || 0;
 	var discount = Number(row.find('.sale-item-discount').val()) || 0;
 	row.find('.sale-item-total').val((unitPrice * ((100 - discount) / 100) * quantity).toFixed(2));
+	calculateSaleItemsGrandTotal();
+}
+
+function calculateSaleItemsGrandTotal() {
+	var grandTotal = 0;
+	$('.sale-item-total').each(function () {
+		grandTotal += Number($(this).val()) || 0;
+	});
+	$('#saleItemsGrandTotal').val(grandTotal.toFixed(2));
 }
 
 var isSaleSubmitInProgress = false;
@@ -2085,13 +2151,23 @@ function getPurchaseDetailsToPopulate() {
 		data: { purchaseDetailsPurchaseID: purchaseDetailsPurchaseID },
 		dataType: 'json',
 		success: function (data) {
-			//$('#purchaseDetailsPurchaseID').val(data.customerID);
-			$('#purchaseDetailsItemNumber').val(data.itemNumber);
+			if (!data || !data.success) {
+				showToastMessage((data && data.message) || 'Transaction was not found.', 'purchaseDetailsMessage');
+				return;
+			}
 			$('#purchaseDetailsPurchaseDate').val(data.purchaseDate);
-			$('#purchaseDetailsItemName').val(data.itemName);
-			$('#purchaseDetailsQuantity').val(data.quantity);
-			$('#purchaseDetailsUnitPrice').val(data.unitPrice);
 			$('#purchaseDetailsVendorName').val(data.vendorName).trigger("chosen:updated");
+			$('#purchaseItemsContainer').empty();
+			$.each(data.items, function (_, item) {
+				addPurchaseItemRow();
+				var row = $('#purchaseItemsContainer .purchase-item-row').last();
+				row.find('.purchase-item-number').val(item.itemNumber);
+				row.find('.purchase-item-name').val(item.itemName);
+				row.find('.purchase-item-quantity').val(item.quantity);
+				row.find('.purchase-item-unit-price').val(item.unitPrice);
+				calculatePurchaseItemRowTotal(row);
+			});
+			showToastMessage('Transaction loaded. Update it when you are finished editing.', 'purchaseDetailsMessage');
 		},
 		complete: function () {
 			calculateTotalInPurchaseTab();
@@ -2115,16 +2191,28 @@ function getSaleDetailsToPopulate() {
 		data: { saleDetailsSaleID: saleDetailsSaleID },
 		dataType: 'json',
 		success: function (data) {
-			//$('#saleDetailsSaleID').val(data.saleID);
+			if (!data || !data.success) {
+				showToastMessage((data && data.message) || 'Transaction was not found.', 'saleDetailsMessage');
+				return;
+			}
 			$('#saleDetailsItemNumber').val(data.itemNumber);
 			$('#saleDetailsCustomerID').val(data.customerID);
 			$('#saleDetailsCustomerName').val(data.customerName);
-			$('#saleDetailsItemName').val(data.itemName);
 			$('#saleDetailsSaleDate').val(data.saleDate);
-			$('#saleDetailsDiscount').val(data.discount);
-			$('#saleDetailsQuantity').val(data.quantity);
-			$('#saleDetailsReason').val(data.reason || 'Sales').trigger('change');
-			$('#saleDetailsUnitPrice').val(data.unitPrice);
+			$('#saleDetailsAmountPaid').val(data.amountPaid);
+			$('#saleItemsContainer').empty();
+			$.each(data.items, function (_, item) {
+				addSaleItemRow();
+				var row = $('#saleItemsContainer .sale-item-row').last();
+				row.find('.sale-item-number').val(item.itemNumber);
+				row.find('.sale-item-name').val(item.itemName);
+				row.find('.sale-item-quantity').val(item.quantity);
+				row.find('.sale-item-unit-price').val(item.unitPrice);
+				row.find('.sale-item-discount').val(item.discount);
+				row.find('.sale-item-reason').val(item.reason || 'Sales');
+				calculateSaleItemRowTotal(row);
+			});
+			showToastMessage('Transaction loaded. Update it when you are finished editing.', 'saleDetailsMessage');
 		},
 		complete: function () {
 			calculateTotalInSaleTab();
@@ -2304,28 +2392,32 @@ function updateVendor() {
 
 // Function to call the updatePurchase.php script to update purchase data to db
 function updatePurchase() {
-	var purchaseDetailsItemNumber = $('#purchaseDetailsItemNumber').val();
 	var purchaseDetailsPurchaseDate = $('#purchaseDetailsPurchaseDate').val();
-	var purchaseDetailsItemName = $('#purchaseDetailsItemName').val();
-	var purchaseDetailsQuantity = $('#purchaseDetailsQuantity').val();
-	var purchaseDetailsUnitPrice = $('#purchaseDetailsUnitPrice').val();
 	var purchaseDetailsPurchaseID = $('#purchaseDetailsPurchaseID').val();
 	var purchaseDetailsVendorName = $('#purchaseDetailsVendorName').val();
+	var purchaseItems = [];
+	$('.purchase-item-row').each(function () {
+		var row = $(this);
+		purchaseItems.push({
+			itemNumber: row.find('.purchase-item-number').val(),
+			itemName: row.find('.purchase-item-name').val(),
+			quantity: row.find('.purchase-item-quantity').val(),
+			unitPrice: row.find('.purchase-item-unit-price').val()
+		});
+	});
 
 	$.ajax({
 		url: 'model/purchase/updatePurchase.php',
 		method: 'POST',
 		data: {
-			purchaseDetailsItemNumber: purchaseDetailsItemNumber,
 			purchaseDetailsPurchaseDate: purchaseDetailsPurchaseDate,
-			purchaseDetailsItemName: purchaseDetailsItemName,
-			purchaseDetailsQuantity: purchaseDetailsQuantity,
-			purchaseDetailsUnitPrice: purchaseDetailsUnitPrice,
 			purchaseDetailsPurchaseID: purchaseDetailsPurchaseID,
 			purchaseDetailsVendorName: purchaseDetailsVendorName,
+			purchaseItems: JSON.stringify(purchaseItems)
 		},
 		success: function (data) {
-			showToastMessage(data, 'purchaseDetailsMessage');
+			var result = typeof data === 'string' ? $.parseJSON(data) : data;
+			showToastMessage((result && result.message) || 'Purchase transaction update failed.', 'purchaseDetailsMessage');
 		},
 		complete: function () {
 			getItemStockToPopulate('purchaseDetailsItemNumber', getItemStockFile, 'purchaseDetailsCurrentStock');
@@ -2485,34 +2577,38 @@ function openSaleReceiptByTransactionID(transactionID, messageDivID) {
 }
 
 function updateSale() {
-	var saleDetailsItemNumber = $('#saleDetailsItemNumber').val();
 	var saleDetailsSaleDate = $('#saleDetailsSaleDate').val();
-	var saleDetailsItemName = $('#saleDetailsItemName').val();
-	var saleDetailsQuantity = $('#saleDetailsQuantity').val();
-	var saleDetailsUnitPrice = $('#saleDetailsUnitPrice').val();
 	var saleDetailsSaleID = $('#saleDetailsSaleID').val();
 	var saleDetailsCustomerName = $('#saleDetailsCustomerName').val();
-	var saleDetailsDiscount = $('#saleDetailsDiscount').val();
-	var saleDetailsReason = $('#saleDetailsReason').val();
 	var saleDetailsCustomerID = $('#saleDetailsCustomerID').val();
+	var saleDetailsAmountPaid = $('#saleDetailsAmountPaid').val();
+	var saleItems = [];
+	$('.sale-item-row').each(function () {
+		var row = $(this);
+		saleItems.push({
+			itemNumber: row.find('.sale-item-number').val(),
+			itemName: row.find('.sale-item-name').val(),
+			quantity: row.find('.sale-item-quantity').val(),
+			unitPrice: row.find('.sale-item-unit-price').val(),
+			discount: row.find('.sale-item-discount').val(),
+			reason: row.find('.sale-item-reason').val()
+		});
+	});
 
 	$.ajax({
 		url: 'model/sale/updateSale.php',
 		method: 'POST',
 		data: {
-			saleDetailsItemNumber: saleDetailsItemNumber,
 			saleDetailsSaleDate: saleDetailsSaleDate,
-			saleDetailsItemName: saleDetailsItemName,
-			saleDetailsQuantity: saleDetailsQuantity,
-			saleDetailsUnitPrice: saleDetailsUnitPrice,
 			saleDetailsSaleID: saleDetailsSaleID,
 			saleDetailsCustomerName: saleDetailsCustomerName,
-			saleDetailsDiscount: saleDetailsDiscount,
-			saleDetailsReason: saleDetailsReason,
 			saleDetailsCustomerID: saleDetailsCustomerID,
+			saleDetailsAmountPaid: saleDetailsAmountPaid,
+			saleItems: JSON.stringify(saleItems)
 		},
 		success: function (data) {
-			showToastMessage(data, 'saleDetailsMessage');
+			var result = typeof data === 'string' ? $.parseJSON(data) : data;
+			showToastMessage((result && result.message) || 'Sale transaction update failed.', 'saleDetailsMessage');
 		},
 		complete: function () {
 			getItemStockToPopulate('saleDetailsItemNumber', getItemStockFile, 'saleDetailsTotalStock');

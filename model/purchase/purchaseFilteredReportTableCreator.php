@@ -22,7 +22,7 @@ if (isset($_POST['startDate'])) {
 	$output = '<table id="purchaseFilteredReportsTable" class="table table-sm table-striped table-bordered table-hover" style="width:100%">
 					<thead>
 						<tr>
-							<th>Purchase ID</th>
+							<th>Transaction ID</th>
 							<th>Item Number</th>
 							<th>Purchase Date</th>
 							<th>Item Name</th>
@@ -43,7 +43,7 @@ if (isset($_POST['startDate'])) {
 		$totalPrice = $uPrice * $qty;
 
 		$output .= '<tr>' .
-			'<td>' . $row['purchaseID'] . '</td>' .
+			'<td>' . (!empty($row['transactionReference']) ? '<button type="button" class="transaction-id-copy" data-transaction-id="' . htmlspecialchars($row['transactionReference']) . '" title="Copy transaction ID">' . htmlspecialchars($row['transactionReference']) . '</button>' : htmlspecialchars($row['purchaseID'])) . '</td>' .
 			'<td>' . $row['itemNumber'] . '</td>' .
 			'<td>' . $row['purchaseDate'] . '</td>' .
 			'<td>' . $row['itemName'] . '</td>' .

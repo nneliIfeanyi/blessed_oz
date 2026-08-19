@@ -79,18 +79,32 @@ function ensureStoreSettingsTable(PDO $conn)
     $conn->exec("CREATE TABLE IF NOT EXISTS `store_settings` (
         `storeID` int(11) NOT NULL,
         `siteName` varchar(255) NOT NULL DEFAULT 'Inventory System',
+        `businessPhone` varchar(100) NOT NULL DEFAULT '',
+        `businessAddress` varchar(255) NOT NULL DEFAULT '',
         `lowStockThreshold` int(11) NOT NULL DEFAULT '5',
         `enableProductDescription` tinyint(1) NOT NULL DEFAULT '1',
         `enableProductImage` tinyint(1) NOT NULL DEFAULT '1',
         `updatedAt` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
         PRIMARY KEY (`storeID`)
     ) ENGINE=InnoDB DEFAULT CHARSET=latin1");
+
+    $columns = [
+        'businessPhone' => "ALTER TABLE `store_settings` ADD COLUMN `businessPhone` varchar(100) NOT NULL DEFAULT '' AFTER `siteName`",
+        'businessAddress' => "ALTER TABLE `store_settings` ADD COLUMN `businessAddress` varchar(255) NOT NULL DEFAULT '' AFTER `businessPhone`"
+    ];
+    foreach ($columns as $columnName => $alterSql) {
+        if ($conn->query("SHOW COLUMNS FROM `store_settings` LIKE '" . $columnName . "'")->rowCount() === 0) {
+            $conn->exec($alterSql);
+        }
+    }
 }
 
 function getDefaultStoreSettings()
 {
     return [
         'siteName' => 'Inventory System',
+        'businessPhone' => '',
+        'businessAddress' => '',
         'lowStockThreshold' => 5,
         'enableProductDescription' => true,
         'enableProductImage' => true
@@ -132,12 +146,14 @@ function getStoreSettings(PDO $conn, $storeID, $legacySettingsFile = '')
 
     try {
         ensureStoreSettingsTable($conn);
-        $statement = $conn->prepare('SELECT siteName, lowStockThreshold, enableProductDescription, enableProductImage FROM store_settings WHERE storeID = :storeID LIMIT 1');
+        $statement = $conn->prepare('SELECT siteName, businessPhone, businessAddress, lowStockThreshold, enableProductDescription, enableProductImage FROM store_settings WHERE storeID = :storeID LIMIT 1');
         $statement->execute(['storeID' => $storeID]);
         if ($statement->rowCount() > 0) {
             $dbSettings = $statement->fetch(PDO::FETCH_ASSOC);
             if ($dbSettings) {
                 $settings['siteName'] = isset($dbSettings['siteName']) && trim((string) $dbSettings['siteName']) !== '' ? $dbSettings['siteName'] : $settings['siteName'];
+                $settings['businessPhone'] = isset($dbSettings['businessPhone']) ? trim((string) $dbSettings['businessPhone']) : $settings['businessPhone'];
+                $settings['businessAddress'] = isset($dbSettings['businessAddress']) ? trim((string) $dbSettings['businessAddress']) : $settings['businessAddress'];
                 $settings['lowStockThreshold'] = isset($dbSettings['lowStockThreshold']) ? max(0, (int) $dbSettings['lowStockThreshold']) : (int) $settings['lowStockThreshold'];
                 $settings['enableProductDescription'] = !empty($dbSettings['enableProductDescription']);
                 $settings['enableProductImage'] = !empty($dbSettings['enableProductImage']);
@@ -160,15 +176,19 @@ function saveStoreSettings(PDO $conn, $storeID, array $settings)
     ensureStoreSettingsTable($conn);
 
     $siteName = isset($settings['siteName']) && trim((string) $settings['siteName']) !== '' ? trim((string) $settings['siteName']) : 'Inventory System';
+    $businessPhone = isset($settings['businessPhone']) ? trim((string) $settings['businessPhone']) : '';
+    $businessAddress = isset($settings['businessAddress']) ? trim((string) $settings['businessAddress']) : '';
     $lowStockThreshold = isset($settings['lowStockThreshold']) ? max(0, (int) $settings['lowStockThreshold']) : 5;
     $enableProductDescription = !empty($settings['enableProductDescription']) ? 1 : 0;
     $enableProductImage = !empty($settings['enableProductImage']) ? 1 : 0;
 
-    $statement = $conn->prepare('INSERT INTO store_settings(storeID, siteName, lowStockThreshold, enableProductDescription, enableProductImage) VALUES(:storeID, :siteName, :lowStockThreshold, :enableProductDescription, :enableProductImage)
-        ON DUPLICATE KEY UPDATE siteName = VALUES(siteName), lowStockThreshold = VALUES(lowStockThreshold), enableProductDescription = VALUES(enableProductDescription), enableProductImage = VALUES(enableProductImage)');
+    $statement = $conn->prepare('INSERT INTO store_settings(storeID, siteName, businessPhone, businessAddress, lowStockThreshold, enableProductDescription, enableProductImage) VALUES(:storeID, :siteName, :businessPhone, :businessAddress, :lowStockThreshold, :enableProductDescription, :enableProductImage)
+        ON DUPLICATE KEY UPDATE siteName = VALUES(siteName), businessPhone = VALUES(businessPhone), businessAddress = VALUES(businessAddress), lowStockThreshold = VALUES(lowStockThreshold), enableProductDescription = VALUES(enableProductDescription), enableProductImage = VALUES(enableProductImage)');
     $statement->execute([
         'storeID' => $storeID,
         'siteName' => $siteName,
+        'businessPhone' => $businessPhone,
+        'businessAddress' => $businessAddress,
         'lowStockThreshold' => $lowStockThreshold,
         'enableProductDescription' => $enableProductDescription,
         'enableProductImage' => $enableProductImage,

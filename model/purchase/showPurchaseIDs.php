@@ -2,18 +2,23 @@
 session_start();
 require_once('../../inc/config/constants.php');
 require_once('../../inc/config/db.php');
+require_once('../../inc/auth.php');
 require_once('../../inc/store.php');
 
 ensureActiveStoreSession($conn);
 $activeStoreID = (int) $_SESSION['activeStoreID'];
+
+if (!userCanManageUsers()) {
+	exit();
+}
 
 // Check if the POST request is received and if so, execute the script
 if (isset($_POST['textBoxValue'])) {
 	$output = '';
 	$purchaseIDString = '%' . htmlentities($_POST['textBoxValue']) . '%';
 
-	// Construct the SQL query to get the purchase ID
-	$sql = 'SELECT purchaseID FROM purchase WHERE purchaseID LIKE ? AND storeID = ?';
+	// Construct the SQL query to get the purchase transaction ID
+	$sql = 'SELECT transactionReference FROM purchase_headers WHERE transactionReference LIKE ? AND storeID = ? ORDER BY id DESC';
 	$stmt = $conn->prepare($sql);
 	$stmt->execute([$purchaseIDString, $activeStoreID]);
 
@@ -23,7 +28,7 @@ if (isset($_POST['textBoxValue'])) {
 		// Given purchase ID is available in DB. Hence create the dropdown list
 		$output = '<ul class="list-unstyled suggestionsList" id="purchaseDetailsPurchaseIDSuggestionsList">';
 		while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
-			$output .= '<li>' . $row['purchaseID'] . '</li>';
+			$output .= '<li>' . htmlspecialchars($row['transactionReference']) . '</li>';
 		}
 		$output .= '</ul>';
 	} else {

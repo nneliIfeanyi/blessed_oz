@@ -24,7 +24,6 @@ $output = '<table id="saleReportsTable" class="table table-sm table-striped tabl
 						<th>Customer Name</th>
 						<th>Item Name</th>
 						<th>Sale Date</th>
-						<th>Discount %</th>
 						<th>Quantity</th>
 						<th>Unit</th>
 						<th>Reason</th>
@@ -42,13 +41,12 @@ while ($row = $saleDetailsSearchStatement->fetch(PDO::FETCH_ASSOC)) {
 	$totalPrice = (isset($row['lineTotal']) && $row['lineTotal'] !== '') ? (float) $row['lineTotal'] : ($uPrice * $qty * ((100 - $discount) / 100));
 
 	$output .= '<tr>' .
-		'<td>' . htmlspecialchars($row['saleReference']) . '</td>' .
+		'<td><button type="button" class="transaction-id-copy" data-transaction-id="' . htmlspecialchars($row['saleReference']) . '" title="Copy transaction ID">' . htmlspecialchars($row['saleReference']) . '</button></td>' .
 		'<td>' . htmlspecialchars($row['itemNumber']) . '</td>' .
 		'<td>' . htmlspecialchars($row['customerID']) . '</td>' .
 		'<td>' . htmlspecialchars($row['customerName']) . '</td>' .
 		'<td>' . htmlspecialchars($row['itemName']) . '</td>' .
 		'<td>' . htmlspecialchars($row['saleDate']) . '</td>' .
-		'<td>' . htmlspecialchars($row['discount']) . '</td>' .
 		'<td>' . htmlspecialchars($row['quantity']) . '</td>' .
 		'<td>' . htmlspecialchars($row['unitAsSold'] ?? 'pcs') . '</td>' .
 		'<td>' . htmlspecialchars(isset($row['reason']) ? $row['reason'] : 'Sales') . '</td>' .
@@ -63,7 +61,6 @@ $output .= '</tbody>
 					<tfoot>
 						<tr>
 							<th>Total</th>
-							<th></th>
 							<th></th>
 							<th></th>
 							<th></th>

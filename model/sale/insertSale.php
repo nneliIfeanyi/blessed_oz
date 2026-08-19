@@ -108,7 +108,19 @@ if (isset($_POST['saleItems']) || isset($_POST['saleDetailsItemNumber'])) {
 		$customerName = $customerName !== '' ? $customerName : $customerRow['fullName'];
 
 		$conn->beginTransaction();
-		$saleReference = 'TXN-' . date('YmdHis') . '-' . substr(strtoupper(md5(uniqid('', true))), 0, 6);
+		$saleReference = '';
+		$transactionReferenceCheck = $conn->prepare('SELECT COUNT(*) FROM (SELECT saleReference AS transactionReference FROM sale_headers WHERE saleReference = :transactionReference UNION ALL SELECT transactionReference FROM purchase_headers WHERE transactionReference = :transactionReference) AS existingTransactions');
+		for ($attempt = 0; $attempt < 20; $attempt++) {
+			$candidateReference = 'TXN-' . str_pad((string) random_int(0, 99999), 5, '0', STR_PAD_LEFT);
+			$transactionReferenceCheck->execute(['transactionReference' => $candidateReference]);
+			if ((int) $transactionReferenceCheck->fetchColumn() === 0) {
+				$saleReference = $candidateReference;
+				break;
+			}
+		}
+		if ($saleReference === '') {
+			throw new Exception('Unable to generate a unique transaction ID. Please try again.');
+		}
 
 		$ensureSaleItemsColumns = [
 			['discount', "ALTER TABLE `sale_items` ADD COLUMN `discount` float NOT NULL DEFAULT '0'"],

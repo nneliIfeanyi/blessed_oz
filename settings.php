@@ -41,6 +41,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $storeIDToSave = isset($_POST['settingsStoreID']) ? (int) $_POST['settingsStoreID'] : 1;
             $settingsPayload = [
                 'siteName' => isset($_POST['siteName']) ? trim((string) $_POST['siteName']) : 'Inventory System',
+                'businessPhone' => isset($_POST['businessPhone']) ? trim((string) $_POST['businessPhone']) : '',
+                'businessAddress' => isset($_POST['businessAddress']) ? trim((string) $_POST['businessAddress']) : '',
                 'lowStockThreshold' => isset($_POST['lowStockThreshold']) ? max(0, (int) $_POST['lowStockThreshold']) : 5,
                 'enableProductDescription' => isset($_POST['enableProductDescription']) && $_POST['enableProductDescription'] === '1',
                 'enableProductImage' => isset($_POST['enableProductImage']) && $_POST['enableProductImage'] === '1'
@@ -185,6 +187,14 @@ require_once('inc/header.html');
                     <div class="form-group">
                         <label for="siteName">Site Name (selected store)</label>
                         <input type="text" class="form-control" id="siteName" name="siteName" value="<?php echo htmlspecialchars($settings['siteName']); ?>">
+                    </div>
+                    <div class="form-group">
+                        <label for="businessPhone">Business Phone Number</label>
+                        <input type="text" class="form-control" id="businessPhone" name="businessPhone" value="<?php echo htmlspecialchars((string) $settings['businessPhone']); ?>">
+                    </div>
+                    <div class="form-group">
+                        <label for="businessAddress">Business Address</label>
+                        <textarea class="form-control" id="businessAddress" name="businessAddress" rows="2"><?php echo htmlspecialchars((string) $settings['businessAddress']); ?></textarea>
                     </div>
                     <div class="form-group">
                         <label for="lowStockThreshold">Low Stock Threshold</label>

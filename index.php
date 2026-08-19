@@ -347,7 +347,7 @@ try {
 							<div class="card-header">Purchase Details</div>
 							<div class="card-body">
 								<div id="purchaseDetailsMessage"></div>
-								<form>
+								<form id="purchaseDetailsForm">
 									<div class="form-row">
 										<div class="form-group col-md-3">
 											<label for="purchaseDetailsPurchaseDate">Purchase Date<span class="requiredIcon">*</span></label>
@@ -355,7 +355,7 @@ try {
 										</div>
 										<div class="form-group col-md-3">
 											<label for="purchaseDetailsPurchaseID">Transaction ID</label>
-											<input type="text" class="form-control invTooltip" id="purchaseDetailsPurchaseID" name="purchaseDetailsPurchaseID" value="Auto-generated after save" title="This will be auto-generated when you save a transaction" autocomplete="off" readonly>
+											<input type="text" class="form-control invTooltip" id="purchaseDetailsPurchaseID" name="purchaseDetailsPurchaseID" value="<?php echo $isSuperAdmin ? '' : 'Auto-generated after save'; ?>" title="<?php echo $isSuperAdmin ? 'Enter a transaction ID to load it for editing' : 'This will be auto-generated when you save a transaction'; ?>" autocomplete="off" <?php echo $isSuperAdmin ? '' : 'readonly'; ?>>
 											<div id="purchaseDetailsPurchaseIDSuggestionsDiv" class="customListDivWidth"></div>
 										</div>
 										<div class="form-group col-md-4">
@@ -368,10 +368,19 @@ try {
 										</div>
 									</div>
 									<div id="purchaseItemsContainer"></div>
+									<div class="form-row justify-content-end">
+										<div class="form-group col-md-3">
+											<label for="purchaseItemsGrandTotal">Overall Total</label>
+											<input type="text" class="form-control font-weight-bold text-right" id="purchaseItemsGrandTotal" value="0.00" readonly>
+										</div>
+									</div>
 									<div class="form-group mt-3">
 										<button type="button" id="addPurchaseItemRowButton" class="btn btn-outline-primary btn-sm">Add Item</button>
 										<button type="button" id="addPurchase" class="btn btn-success">Add Purchase</button>
-										<button type="button" id="updatePurchaseDetailsButton" class="btn btn-primary">Update</button>
+										<?php if ($isSuperAdmin) { ?>
+											<button type="button" id="loadPurchaseTransactionButton" class="btn btn-outline-secondary">Load Transaction</button>
+											<button type="button" id="updatePurchaseDetailsButton" class="btn btn-primary">Update Transaction</button>
+										<?php } ?>
 										<button type="reset" class="btn">Clear</button>
 									</div>
 								</form>
@@ -385,7 +394,7 @@ try {
 							<div class="card-body">
 								<!-- Div to show the ajax message from validations/db submission -->
 								<div id="vendorDetailsMessage"></div>
-								<form>
+								<form id="saleDetailsForm">
 									<div class="form-row">
 										<div class="form-group col-md-6">
 											<label for="vendorDetailsVendorFullName">Full Name<span class="requiredIcon">*</span></label>
@@ -440,7 +449,17 @@ try {
 							<div class="card-body">
 								<div id="saleDetailsMessage"></div>
 								<form>
-									<input type="hidden" id="saleDetailsSaleID" name="saleDetailsSaleID" value="">
+									<?php if ($isSuperAdmin) { ?>
+										<div class="form-row">
+											<div class="form-group col-lg-4 col-md-6">
+												<label for="saleDetailsSaleID">Transaction ID</label>
+												<input type="text" class="form-control" id="saleDetailsSaleID" name="saleDetailsSaleID" autocomplete="off" placeholder="TXN-...">
+												<div id="saleDetailsSaleIDSuggestionsDiv" class="customListDivWidth"></div>
+											</div>
+										</div>
+									<?php } else { ?>
+										<input type="hidden" id="saleDetailsSaleID" name="saleDetailsSaleID" value="">
+									<?php } ?>
 									<div class="form-row compact-form-row align-items-end">
 										<div class="form-group col-lg-2 col-md-4">
 											<label for="saleDetailsCustomerID">Customer ID<span class="requiredIcon">*</span></label>
@@ -457,13 +476,24 @@ try {
 										</div>
 										<div class="form-group col-lg-4 col-md-4">
 											<label for="saleDetailsAmountPaid">Initial Amount Paid</label>
+											<small class="form-text text-muted">Later Credit Book payments remain unchanged when this value is corrected.</small>
 											<input type="number" class="form-control" id="saleDetailsAmountPaid" name="saleDetailsAmountPaid" value="0">
 										</div>
 									</div>
 									<div id="saleItemsContainer"></div>
+									<div class="form-row justify-content-end">
+										<div class="form-group col-md-3">
+											<label for="saleItemsGrandTotal">Overall Total</label>
+											<input type="text" class="form-control font-weight-bold text-right" id="saleItemsGrandTotal" value="0.00" readonly>
+										</div>
+									</div>
 									<div class="form-group mt-3">
 										<button type="button" id="addSaleItemRowButton" class="btn btn-outline-primary btn-sm">Add Item</button>
 										<button type="button" id="addSaleButton" class="btn btn-success">Stock Out</button>
+										<?php if ($isSuperAdmin) { ?>
+											<button type="button" id="loadSaleTransactionButton" class="btn btn-outline-secondary">Load Transaction</button>
+											<button type="button" id="updateSaleDetailsButton" class="btn btn-primary">Update Transaction</button>
+										<?php } ?>
 										<button type="button" id="printSaleReceiptButton" class="btn btn-outline-secondary">Print Receipt</button>
 										<button type="reset" id="saleClear" class="btn">Clear</button>
 									</div>

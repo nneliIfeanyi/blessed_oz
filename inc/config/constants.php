@@ -5,7 +5,7 @@ define('ROOT_URL', 'http://localhost/inventory-system/');
 
 // Database parameters
 // Data source name
-define('DSN', 'mysql:host=localhost;dbname=store_inventory');
+define('DSN', 'mysql:host=localhost;port=3306;dbname=store_inventory2');
 
 // Hostname
 define('DB_HOST', 'localhost');
@@ -17,4 +17,10 @@ define('DB_USER', 'root');
 define('DB_PASSWORD', '');
 
 // DB name
-define('DB_NAME', 'store_inventory');
+define('DB_NAME', 'store_inventory2');
+
+// $host = '10.216.60.196';
+// $port = 3306;
+// $db = 'store_inventory';
+// $user = 'app_user';
+// $pass = 'Avalanche@25';
