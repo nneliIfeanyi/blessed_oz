@@ -1,8 +1,8 @@
     <!-- Footer -->
     <footer class="footer bg-dark">
-    	<div class="container">
-    		<p class="m-0 text-center text-white">Copyright &copy; Inventory System <?php echo date('Y'); ?></p>
-    	</div>
+        <div class="container">
+            <p class="m-0 text-center text-white">Copyright &copy; Inventory System <?php echo date('Y'); ?></p>
+        </div>
     </footer>
 
     <!-- Bootstrap core JavaScript -->
@@ -26,3 +26,4 @@
     <!-- Custom scripts -->
     <script src="assets/js/scripts.js?v=<?php echo filemtime(__DIR__ . '/../assets/js/scripts.js'); ?>"></script>
     <script src="assets/js/login.js?v=<?php echo filemtime(__DIR__ . '/../assets/js/login.js'); ?>"></script>
+    <script src="assets/js/pwa.js?v=<?php echo filemtime(__DIR__ . '/../assets/js/pwa.js'); ?>"></script>
