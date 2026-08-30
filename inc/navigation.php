@@ -68,11 +68,17 @@ $returnUrl = isset($_SERVER['REQUEST_URI']) ? $_SERVER['REQUEST_URI'] : $navBase
                                                                   echo '<sup class="badge ' . $badgeClass . '">' . (int) $lowStockCount . '</sup>';
                                                                   ?></a>
         </li>
+        <li class="nav-item">
+          <a class="nav-link" href="sync_dashboard.php">Sync Status</a>
+        </li>
         <?php if (isset($_SESSION['role']) && $_SESSION['role'] === 'super_admin') { ?>
           <li class="nav-item">
             <a class="nav-link" href="settings.php">Settings</a>
           </li>
         <?php } ?>
+        <li class="nav-item d-flex align-items-center">
+          <span id="syncStatusBadge" class="badge badge-success">Synced</span>
+        </li>
         <li class="nav-item">
           <a class="nav-link" href="model/login/logout.php">Log Out</a>
         </li>

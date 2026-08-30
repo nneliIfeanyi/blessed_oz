@@ -1483,6 +1483,9 @@ function populatePurchaseItemRowDetails(row) {
 			if (data.unitPrice !== undefined) {
 				row.find('.purchase-item-unit-price').val(data.unitPrice);
 			}
+			if (window.inventorySync && typeof window.inventorySync.recordKnownStock === 'function') {
+				window.inventorySync.recordKnownStock(itemNumber, data.stock);
+			}
 			calculatePurchaseItemRowTotal(row);
 		}
 	});
@@ -1519,6 +1522,40 @@ function addPurchase() {
 	var originalButtonText = $addPurchaseButton.data('original-text') || $addPurchaseButton.text();
 	var wasSuccessful = false;
 	$addPurchaseButton.data('original-text', originalButtonText);
+
+	if (!navigator.onLine && window.inventorySync && typeof window.inventorySync.addToOutbox === 'function') {
+		$('.purchase-item-row').each(function () {
+			var row = $(this);
+			purchaseItems.push({
+				itemNumber: row.find('.purchase-item-number').val(),
+				itemName: row.find('.purchase-item-name').val(),
+				quantity: row.find('.purchase-item-quantity').val(),
+				unitPrice: row.find('.purchase-item-unit-price').val(),
+				stock: row.find('.purchase-item-stock').val(),
+				purchaseDate: purchaseDetailsPurchaseDate,
+				vendorName: purchaseDetailsVendorName
+			});
+		});
+
+		if (purchaseItems.length > 0) {
+			var entry = window.inventorySync.addToOutbox('purchase', {
+				purchaseDate: purchaseDetailsPurchaseDate,
+				vendorName: purchaseDetailsVendorName,
+				items: purchaseItems
+			});
+			if (entry) {
+				window.inventorySync.setSyncStatusUI();
+				showToastMessage('Offline mode: purchase queued and will sync automatically when the connection returns.', 'purchaseDetailsMessage');
+				var purchaseForm = $addPurchaseButton.closest('form').get(0);
+				if (purchaseForm) {
+					purchaseForm.reset();
+				}
+				isPurchaseSubmitInProgress = false;
+				$addPurchaseButton.prop('disabled', false).text(originalButtonText);
+				return;
+			}
+		}
+	}
 
 	$('.purchase-item-row').each(function () {
 		var row = $(this);
@@ -1685,6 +1722,9 @@ function populateSaleItemRowDetails(row) {
 			if (data.discount !== undefined) {
 				row.find('.sale-item-discount').val(data.discount);
 			}
+			if (window.inventorySync && typeof window.inventorySync.recordKnownStock === 'function') {
+				window.inventorySync.recordKnownStock(itemNumber, data.stock);
+			}
 			calculateSaleItemRowTotal(row);
 		}
 	});
@@ -1723,6 +1763,112 @@ function addSale() {
 	var originalButtonText = $addSaleButton.data('original-text') || $addSaleButton.text();
 	var wasSuccessful = false;
 	$addSaleButton.data('original-text', originalButtonText);
+
+	if (!navigator.onLine && window.inventorySync && typeof window.inventorySync.addToOutbox === 'function') {
+		// Prevent offline sale if customer is missing or invalid (mirrors server-side check)
+		var offlineCustomerId = String(saleDetailsCustomerID || '').trim();
+		var offlineCustomerName = String(saleDetailsCustomerName || '').trim();
+		if (offlineCustomerId === '' || !/^\d+$/.test(offlineCustomerId) || parseInt(offlineCustomerId, 10) <= 0) {
+			showToastMessage('Customer does not exist. Enter a valid Customer ID before saving offline.', 'saleDetailsMessage');
+			return;
+		}
+		if (offlineCustomerName === '') {
+			showToastMessage('Customer does not exist. Select a known customer (name must be loaded) before saving offline.', 'saleDetailsMessage');
+			return;
+		}
+
+		$('.sale-item-row').each(function () {
+			var row = $(this);
+			saleItems.push({
+				itemNumber: row.find('.sale-item-number').val(),
+				itemName: row.find('.sale-item-name').val(),
+				quantity: row.find('.sale-item-quantity').val(),
+				unitPrice: row.find('.sale-item-unit-price').val(),
+				discount: row.find('.sale-item-discount').val(),
+				reason: row.find('.sale-item-reason').val(),
+				stock: row.find('.sale-item-stock').val()
+			});
+		});
+
+		if (saleItems.length === 0) {
+			showToastMessage('Please add at least one item before saving the stock out.', 'saleDetailsMessage');
+			return;
+		}
+
+		// Offline insufficient-stock check using last known stock (form/cache) + pending offline purchases/sales
+		var offlineStockNeeded = {};
+		for (var si = 0; si < saleItems.length; si++) {
+			var sItem = saleItems[si];
+			var sNum = String(sItem.itemNumber || '').trim();
+			var sQty = parseInt(sItem.quantity, 10);
+			if (sNum === '') {
+				showToastMessage('Please enter an item number for each row.', 'saleDetailsMessage');
+				return;
+			}
+			if (isNaN(sQty) || sQty <= 0) {
+				showToastMessage('Please enter a valid quantity for each row.', 'saleDetailsMessage');
+				return;
+			}
+			offlineStockNeeded[sNum] = (offlineStockNeeded[sNum] || 0) + sQty;
+		}
+		for (var itemKey in offlineStockNeeded) {
+			if (!Object.prototype.hasOwnProperty.call(offlineStockNeeded, itemKey)) {
+				continue;
+			}
+			var neededQty = offlineStockNeeded[itemKey];
+			var baselineStock = '';
+			$('.sale-item-row').each(function () {
+				var row = $(this);
+				if (String(row.find('.sale-item-number').val() || '').trim() === itemKey) {
+					baselineStock = row.find('.sale-item-stock').val();
+					return false;
+				}
+			});
+			var available = null;
+			if (window.inventorySync.getOfflineAvailableStock) {
+				available = window.inventorySync.getOfflineAvailableStock(itemKey, baselineStock);
+			} else {
+				var parsedBase = parseInt(baselineStock, 10);
+				available = isNaN(parsedBase) ? null : parsedBase;
+			}
+			if (available === null) {
+				showToastMessage(
+					'Cannot verify stock for item ' + itemKey + ' offline (last DB stock unknown). Load the item while online, or make an offline purchase for this product first.',
+					'saleDetailsMessage'
+				);
+				return;
+			}
+			if (neededQty > available) {
+				showToastMessage(
+					'Insufficient stock for item ' + itemKey + ' (available offline: ' + available + ', requested: ' + neededQty + '). Make an offline purchase first, then try stock out again.',
+					'saleDetailsMessage'
+				);
+				return;
+			}
+		}
+
+		var entry = window.inventorySync.addToOutbox('sale', {
+			customerID: offlineCustomerId,
+			customerName: offlineCustomerName,
+			saleDate: saleDetailsSaleDate,
+			amountPaid: saleDetailsAmountPaid,
+			items: saleItems
+		});
+		if (entry) {
+			window.inventorySync.setSyncStatusUI();
+			showToastMessage('Offline mode: stock out queued and will sync automatically when the connection returns.', 'saleDetailsMessage');
+			var saleForm = $addSaleButton.closest('form').get(0);
+			if (saleForm) {
+				saleForm.reset();
+			}
+			$('#saleDetailsImageContainer').empty();
+			isSaleSubmitInProgress = false;
+			$addSaleButton.prop('disabled', false).text(originalButtonText);
+			return;
+		}
+		// If addToOutbox returned null (e.g. free plan upgrade modal), stop here
+		return;
+	}
 
 	$('.sale-item-row').each(function () {
 		var row = $(this);
@@ -1864,6 +2010,9 @@ function getItemDetailsToPopulateForSaleTab() {
 			$('#saleDetailsDiscount').val(data.discount);
 			$('#saleDetailsTotalStock').val(data.stock);
 			$('#saleDetailsUnitPrice').val(data.unitPrice);
+			if (window.inventorySync && typeof window.inventorySync.recordKnownStock === 'function') {
+				window.inventorySync.recordKnownStock(itemNumber, data.stock);
+			}
 
 			newImgUrl = 'data/item_images/' + data.itemNumber + '/' + data.imageURL;
 
@@ -1915,6 +2064,9 @@ function getItemStockToPopulate(itemNumberTextbox, scriptPath, stockTextbox) {
 		dataType: 'json',
 		success: function (data) {
 			$('#' + stockTextbox).val(data.stock);
+			if (window.inventorySync && typeof window.inventorySync.recordKnownStock === 'function') {
+				window.inventorySync.recordKnownStock(itemNumber, data.stock);
+			}
 		},
 		error: function (xhr, ajaxOptions, thrownError) {
 			//alert(xhr.status);

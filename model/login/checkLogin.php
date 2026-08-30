@@ -6,6 +6,7 @@ require_once('../../inc/auth.php');
 require_once('../../inc/store.php');
 
 ensureUserRoleColumn($conn);
+ensureSubscriptionColumns($conn);
 bootstrapFirstSuperAdmin($conn);
 
 $loginUsername = '';
@@ -57,6 +58,7 @@ if (isset($_POST['loginUsername'])) {
 			$_SESSION['fullName'] = $row['fullName'];
 			$_SESSION['role'] = isset($row['role']) ? $row['role'] : 'admin';
 			ensureActiveStoreSession($conn);
+			loadUserSubscriptionSession($conn, $row['userID']);
 
 			echo '<div class="alert alert-success"><button type="button" class="close" data-dismiss="alert">&times;</button>Login success! Redirecting you to home page...</div>';
 			exit();
