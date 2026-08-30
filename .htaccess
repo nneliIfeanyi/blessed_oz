@@ -1,0 +1,19 @@
+Options -Indexes
+
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteBase /
+
+    # Allow direct access to real files and folders
+    RewriteCond %{REQUEST_FILENAME} -f [OR]
+    RewriteCond %{REQUEST_FILENAME} -d
+    RewriteRule ^ - [L]
+
+    # Route everything else to the app entry point
+    RewriteRule ^ index.php [QSA,L]
+</IfModule>
+
+# Optional: deny direct access to sensitive folders if needed
+# <FilesMatch "^(inc|model|data|vendor)">
+#     Require all denied
+# </FilesMatch>

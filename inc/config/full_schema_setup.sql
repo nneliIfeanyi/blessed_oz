@@ -39,6 +39,15 @@ CREATE TABLE IF NOT EXISTS `user` (
   UNIQUE KEY `username` (`username`)
 ) ENGINE=InnoDB DEFAULT CHARSET=latin1;
 
+INSERT INTO `user` (`userID`, `fullName`, `username`, `password`, `role`, `status`) VALUES
+(2, 'Guest', 'guest', '81dc9bdb52d04dc20036dbd8313ed055', 'admin', 'Active'),
+(1, 'admin', 'admin', '21232f297a57a5a743894a0e4a801fc3', 'super_admin', 'Active')
+ON DUPLICATE KEY UPDATE
+  `fullName` = VALUES(`fullName`),
+  `password` = VALUES(`password`),
+  `role` = VALUES(`role`),
+  `status` = VALUES(`status`);
+
 CREATE TABLE IF NOT EXISTS `item` (
   `productID` int(11) NOT NULL AUTO_INCREMENT,
   `storeID` int(11) NOT NULL DEFAULT '1',
