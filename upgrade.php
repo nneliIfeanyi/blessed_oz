@@ -167,6 +167,7 @@ $currentPlan = $_SESSION['subscription_plan'] ?? 'free';
 							<li class="included">Stock Tracking</li>
 							<li class="excluded">Offline Mode</li>
 							<li class="excluded">Automatic Sync</li>
+							<li class="excluded">Branch / Multi-Store</li>
 							<li class="excluded">Priority Support</li>
 						</ul>
 					</div>
@@ -198,6 +199,7 @@ $currentPlan = $_SESSION['subscription_plan'] ?? 'free';
 							<li class="included">Offline Mode ✨</li>
 							<li class="included">Automatic Sync</li>
 							<li class="included">Offline Transactions Queue</li>
+							<li class="included">Branch / Multi-Store</li>
 							<li class="included">Multi-device Sync</li>
 							<li class="included">Priority Email Support</li>
 							<li class="included">Monthly Backups</li>
@@ -224,7 +226,6 @@ $currentPlan = $_SESSION['subscription_plan'] ?? 'free';
 						<div class="price-display">Custom</div>
 						<ul class="feature-list">
 							<li class="included">Everything in Pro</li>
-							<li class="included">Multiple Stores</li>
 							<li class="included">Advanced Analytics</li>
 							<li class="included">Custom Integrations</li>
 							<li class="included">Dedicated Support</li>
@@ -376,11 +377,17 @@ $currentPlan = $_SESSION['subscription_plan'] ?? 'free';
 		}
 
 		$('#upgradeBtn').on('click', function () {
-			const cycle = $(this).data('cycle');
-			const currency = $(this).data('currency');
-			alert('Thank you for upgrading! This feature will integrate with a payment provider (Stripe, Paystack, etc.) soon.\n\nFor now, please contact support to upgrade manually.');
-			// In a real implementation, redirect to payment gateway
-			// window.location.href = 'checkout.php?cycle=' + cycle + '&currency=' + currency;
+			const cycle = $(this).data('cycle') || 'monthly';
+			const currency = ($(this).data('currency') || 'ngn').toUpperCase();
+			const cycleLabel = cycle === 'yearly' ? 'Yearly' : (cycle === '6months' ? '6 Months' : 'Monthly');
+			const message =
+				'Hello, I am willing to subscribe to the Inventory System Pro plan (' +
+				cycleLabel +
+				', ' +
+				currency +
+				'). Please assist me with the upgrade.';
+			const whatsappUrl = 'https://wa.me/2347041184519?text=' + encodeURIComponent(message);
+			window.open(whatsappUrl, '_blank');
 		});
 	</script>
 

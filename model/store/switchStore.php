@@ -8,12 +8,22 @@ if (!isset($_SESSION['loggedIn']) || $_SESSION['loggedIn'] !== '1') {
 
 require_once('../../inc/config/constants.php');
 require_once('../../inc/config/db.php');
+require_once('../../inc/auth.php');
 require_once('../../inc/store.php');
 
 ensureActiveStoreSession($conn);
 
+// Multi-store switching is a Pro feature — free users stay on their current / main store
 if (isset($_POST['storeID'])) {
-    setActiveStoreByID($conn, $_POST['storeID']);
+    $requestedStoreID = (int) $_POST['storeID'];
+    if (isProActive()) {
+        setActiveStoreByID($conn, $requestedStoreID);
+    } else {
+        // Quietly ignore non-main switches for free plan
+        if ($requestedStoreID === 1) {
+            setActiveStoreByID($conn, 1);
+        }
+    }
 }
 
 // Derive the application base path from ROOT_URL so the redirect works on any sub-directory or live host.

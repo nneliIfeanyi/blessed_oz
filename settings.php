@@ -19,6 +19,8 @@ if (!isset($_SESSION['role']) || $_SESSION['role'] !== 'super_admin') {
     exit();
 }
 
+$isProActive = isProActive();
+
 $settingsFile = 'inc/config/site_settings.json';
 $savedMessage = '';
 $errorMessage = '';
@@ -50,6 +52,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             saveStoreSettings($conn, $storeIDToSave, $settingsPayload);
             $savedMessage = 'Store settings saved successfully.';
         } elseif ($actionType === 'createStore') {
+            if (!isProActive()) {
+                throw new Exception('Branch stores are a Pro feature. Please upgrade to create additional branches.');
+            }
+
             $newStoreName = isset($_POST['newStoreName']) ? trim((string) $_POST['newStoreName']) : '';
             $newStoreCode = isset($_POST['newStoreCode']) ? strtoupper(trim((string) $_POST['newStoreCode'])) : '';
 
@@ -211,15 +217,24 @@ require_once('inc/header.html');
                     <button type="submit" class="btn btn-primary">Save Store Settings</button>
                     <a href="login.php?action=register" class="btn btn-success">Add User</a>
                     <a href="login.php?action=resetPassword" class="btn btn-warning">Reset Password</a>
+                    <a href="upgrade.php" class="btn btn-info"><?php echo $isProActive ? 'Pro Plan' : 'Upgrade to Pro'; ?></a>
                     <a href="index.php" class="btn btn-secondary">Back to Dashboard</a>
                 </form>
             </div>
         </div>
 
         <div class="card mb-4">
-            <div class="card-header">Branch Management</div>
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span>Branch Management</span>
+                <?php if ($isProActive) { ?>
+                    <span class="badge badge-success">Pro</span>
+                <?php } else { ?>
+                    <span class="badge badge-secondary">Free</span>
+                <?php } ?>
+            </div>
             <div class="card-body">
                 <h6>Create New Branch</h6>
+                <?php if ($isProActive) { ?>
                 <form method="post" action="settings.php?storeID=<?php echo (int) $selectedStoreID; ?>" class="mb-4">
                     <input type="hidden" name="actionType" value="createStore">
                     <div class="form-row">
@@ -234,6 +249,12 @@ require_once('inc/header.html');
                     </div>
                     <button type="submit" class="btn btn-outline-primary">Create Branch</button>
                 </form>
+                <?php } else { ?>
+                <div class="alert alert-light border mb-4" role="alert">
+                    <p class="mb-2">Branch stores (multi-store) are available on the <strong>Pro</strong> plan, along with offline mode and automatic sync.</p>
+                    <a href="upgrade.php" class="btn btn-sm btn-primary">Upgrade to Pro</a>
+                </div>
+                <?php } ?>
 
                 <h6>Existing Branches</h6>
                 <div class="table-responsive">

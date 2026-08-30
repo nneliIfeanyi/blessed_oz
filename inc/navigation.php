@@ -24,7 +24,9 @@ if (isset($conn)) {
 }
 
 $activeStores = [];
-if (isset($conn) && isset($_SESSION['loggedIn']) && $_SESSION['loggedIn'] === '1') {
+// Multi-store switcher is Pro-only (free users stay on a single store quietly)
+$canUseMultiStore = !empty($_SESSION['isProActive']);
+if (isset($conn) && isset($_SESSION['loggedIn']) && $_SESSION['loggedIn'] === '1' && $canUseMultiStore) {
   $activeStores = getActiveStores($conn);
 }
 
