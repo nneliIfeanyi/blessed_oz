@@ -11,92 +11,74 @@ if (!isset($_SESSION['loggedIn'])) {
     exit();
 }
 
-ensureActiveStoreSession($conn);
-$activeStoreID = (int) $_SESSION['activeStoreID'];
-$userID = (int) $_SESSION['userID'];
-$isProActive = isProActive();
-
-// Create sync_log table if it doesn't exist
 try {
-    // Try to create with correct schema first
+    ensureActiveStoreSession($conn);
+} catch (Exception $e) {
+    // Continue with session defaults if store bootstrap fails
+}
+
+$activeStoreID = isset($_SESSION['activeStoreID']) ? (int) $_SESSION['activeStoreID'] : 1;
+$userID = isset($_SESSION['userID']) ? (int) $_SESSION['userID'] : 0;
+$isProActive = function_exists('isProActive') ? isProActive() : false;
+
+// Ensure subscription columns exist (shared hosts often lack them until first login path runs)
+if (function_exists('ensureSubscriptionColumns')) {
+    try {
+        ensureSubscriptionColumns($conn);
+    } catch (Exception $e) {
+        // non-fatal
+    }
+}
+
+// Create sync_log if missing — never DROP on shared hosting
+try {
     $conn->exec("CREATE TABLE IF NOT EXISTS sync_log (
         syncID INT(11) NOT NULL AUTO_INCREMENT,
         storeID INT(11) NOT NULL DEFAULT '1',
         userID INT(11) NOT NULL,
-        clientReferenceId VARCHAR(255) NOT NULL UNIQUE,
+        clientReferenceId VARCHAR(255) NOT NULL,
         transactionType VARCHAR(50) NOT NULL,
         status VARCHAR(20) NOT NULL DEFAULT 'pending',
-        responseReference VARCHAR(255),
+        responseReference VARCHAR(255) DEFAULT NULL,
         createdAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
         PRIMARY KEY (syncID),
-        KEY status (status)
-    ) ENGINE=InnoDB DEFAULT CHARSET=latin1");
+        UNIQUE KEY clientReferenceId (clientReferenceId),
+        KEY status (status),
+        KEY storeID (storeID)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 } catch (PDOException $e) {
-    // If CREATE TABLE fails due to duplicate key, try dropping and recreating
-    if (strpos($e->getMessage(), 'Duplicate key name') !== false) {
-        try {
-            $conn->exec("DROP TABLE IF EXISTS sync_log");
-            $conn->exec("CREATE TABLE sync_log (
-                syncID INT(11) NOT NULL AUTO_INCREMENT,
-                storeID INT(11) NOT NULL DEFAULT '1',
-                userID INT(11) NOT NULL,
-                clientReferenceId VARCHAR(255) NOT NULL UNIQUE,
-                transactionType VARCHAR(50) NOT NULL,
-                status VARCHAR(20) NOT NULL DEFAULT 'pending',
-                responseReference VARCHAR(255),
-                createdAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                PRIMARY KEY (syncID),
-                KEY status (status)
-            ) ENGINE=InnoDB DEFAULT CHARSET=latin1");
-        } catch (PDOException $dropError) {
-            error_log('Failed to recreate sync_log table: ' . $dropError->getMessage());
-        }
-    } else {
-        // Log other errors but continue
-        error_log('Failed to create sync_log table: ' . $e->getMessage());
-    }
+    // Table may already exist with a compatible schema — page must still render
+    error_log('sync_dashboard sync_log ensure: ' . $e->getMessage());
 }
 
-// Get sync statistics
+// Get sync statistics (safe defaults if table/query fails)
 $syncStats = [];
-$syncStatsStmt = null;
 try {
-    $syncStatsStmt = $conn->prepare('
-        SELECT 
-            status, 
-            COUNT(*) as count,
-            transactionType
-        FROM sync_log 
-        WHERE storeID = :storeID 
-        GROUP BY status, transactionType
-    ');
+    $syncStatsStmt = $conn->prepare(
+        'SELECT status, COUNT(*) AS count, transactionType
+         FROM sync_log
+         WHERE storeID = :storeID
+         GROUP BY status, transactionType'
+    );
     $syncStatsStmt->execute(['storeID' => $activeStoreID]);
     $syncStats = $syncStatsStmt->fetchAll(PDO::FETCH_ASSOC);
 } catch (PDOException $e) {
-    // Table doesn't exist yet or query failed
     $syncStats = [];
 }
 
 // Get recent sync activities
 $recentSync = [];
 try {
-    $recentSyncStmt = $conn->prepare('
-        SELECT 
-            syncID,
-            clientReferenceId,
-            transactionType,
-            status,
-            responseReference,
-            createdAt
-        FROM sync_log 
-        WHERE storeID = :storeID
-        ORDER BY createdAt DESC
-        LIMIT 50
-    ');
+    $recentSyncStmt = $conn->prepare(
+        'SELECT syncID, clientReferenceId, transactionType, status, responseReference, createdAt
+         FROM sync_log
+         WHERE storeID = :storeID
+         ORDER BY createdAt DESC
+         LIMIT 50'
+    );
     $recentSyncStmt->execute(['storeID' => $activeStoreID]);
     $recentSync = $recentSyncStmt->fetchAll(PDO::FETCH_ASSOC);
 } catch (PDOException $e) {
-    // Table doesn't exist yet or query failed
     $recentSync = [];
 }
 
@@ -109,22 +91,48 @@ $syncedByType = ['sale' => 0, 'purchase' => 0];
 $failedByType = ['sale' => 0, 'purchase' => 0];
 
 foreach ($syncStats as $stat) {
-    if ($stat['status'] === 'pending') {
-        $totalPending += $stat['count'];
-        $pendingByType[$stat['transactionType']] = $stat['count'];
-    } elseif ($stat['status'] === 'synced') {
-        $totalSynced += $stat['count'];
-        $syncedByType[$stat['transactionType']] = $stat['count'];
-    } elseif ($stat['status'] === 'failed') {
-        $totalFailed += $stat['count'];
-        $failedByType[$stat['transactionType']] = $stat['count'];
+    $type = isset($stat['transactionType']) ? (string) $stat['transactionType'] : '';
+    $count = isset($stat['count']) ? (int) $stat['count'] : 0;
+    $status = isset($stat['status']) ? (string) $stat['status'] : '';
+
+    if ($status === 'pending') {
+        $totalPending += $count;
+        if (isset($pendingByType[$type])) {
+            $pendingByType[$type] = $count;
+        }
+    } elseif ($status === 'synced') {
+        $totalSynced += $count;
+        if (isset($syncedByType[$type])) {
+            $syncedByType[$type] = $count;
+        }
+    } elseif ($status === 'failed') {
+        $totalFailed += $count;
+        if (isset($failedByType[$type])) {
+            $failedByType[$type] = $count;
+        }
     }
 }
 
-// Get user's sync status
-$userSubStmt = $conn->prepare('SELECT subscription_plan, subscription_expires_at FROM `user` WHERE userID = :userID');
-$userSubStmt->execute(['userID' => $userID]);
-$userSub = $userSubStmt->fetch(PDO::FETCH_ASSOC);
+// Subscription display — never fatal if columns/rows missing
+$userSub = [
+    'subscription_plan' => isset($_SESSION['subscription_plan']) ? $_SESSION['subscription_plan'] : 'free',
+    'subscription_expires_at' => isset($_SESSION['subscription_expires_at']) ? $_SESSION['subscription_expires_at'] : null,
+];
+try {
+    $colCheck = $conn->query("SHOW COLUMNS FROM `user` LIKE 'subscription_plan'");
+    if ($colCheck && $colCheck->rowCount() > 0 && $userID > 0) {
+        $userSubStmt = $conn->prepare(
+            'SELECT subscription_plan, subscription_expires_at FROM `user` WHERE userID = :userID LIMIT 1'
+        );
+        $userSubStmt->execute(['userID' => $userID]);
+        $row = $userSubStmt->fetch(PDO::FETCH_ASSOC);
+        if (is_array($row)) {
+            $userSub = $row;
+        }
+    }
+} catch (PDOException $e) {
+    // keep session defaults
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -222,9 +230,12 @@ $userSub = $userSubStmt->fetch(PDO::FETCH_ASSOC);
                     <?php if ($isProActive) { ?>
                         <span class="pro-badge">
                             ✓ Pro Active
-                            <?php if ($userSub['subscription_expires_at']) { ?>
-                                <br><small>Expires: <?php echo date('M d, Y', strtotime($userSub['subscription_expires_at'])); ?></small>
-                            <?php } ?>
+                            <?php
+                            $expiresAt = isset($userSub['subscription_expires_at']) ? $userSub['subscription_expires_at'] : null;
+                            if (!empty($expiresAt)) {
+                                echo '<br><small>Expires: ' . htmlspecialchars(date('M d, Y', strtotime($expiresAt))) . '</small>';
+                            }
+                            ?>
                         </span>
                     <?php } else { ?>
                         <span class="free-badge">
