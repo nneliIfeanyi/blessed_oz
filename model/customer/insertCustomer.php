@@ -23,11 +23,13 @@ function getAvailableColumns($conn, $table)
 
 if (isset($_POST['customerDetailsCustomerFullName'])) {
 	$fullName = trim(htmlentities($_POST['customerDetailsCustomerFullName']));
-	$email = trim(htmlentities($_POST['customerDetailsCustomerEmail']));
+	$email = trim(htmlentities($_POST['customerDetailsCustomerEmail'] ?? ''));
 	$mobile = trim(htmlentities($_POST['customerDetailsCustomerMobile']));
 	$address = trim(htmlentities($_POST['customerDetailsCustomerAddress']));
-	$district = trim(htmlentities($_POST['customerDetailsCustomerDistrict']));
-	$status = trim(htmlentities($_POST['customerDetailsStatus']));
+	$address2 = trim(htmlentities($_POST['customerDetailsCustomerAddress2'] ?? ''));
+	$city = trim(htmlentities($_POST['customerDetailsCustomerCity'] ?? ''));
+	$district = trim(htmlentities($_POST['customerDetailsCustomerDistrict'] ?? ''));
+	$status = trim(htmlentities($_POST['customerDetailsStatus'] ?? ''));
 
 	if ($fullName == '' || $mobile == '' || $address == '') {
 		echo 'Please enter all fields marked with a (*)';

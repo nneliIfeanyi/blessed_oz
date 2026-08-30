@@ -18,7 +18,7 @@ FIRST Download
 
 8. Create a database with name shop_inventory
 
-6. Import shop_inventory.sql file(given inside the zip package in SQL file folder)
+6. Import inc/config/full_schema_setup.sql (found inside inc/config in this project)
 
 7.Run the script http://localhost/inventory-management-system
 

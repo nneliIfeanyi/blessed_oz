@@ -1,6 +1,6 @@
 {
-    "name": "ANTOBELL Inventory",
-    "short_name": "ANTOBELL",
+    "name": "Leadstar Inventory",
+    "short_name": "LEADSTAR",
     "id": "./",
     "start_url": "./login.php",
     "scope": "./",

@@ -1,6 +1,6 @@
 This favicon was generated using the following font:
 
-- Font Title: Lacquer
+- Font Title: Lemon
 - Font Author: undefined
-- Font Source: https://fonts.gstatic.com/s/lacquer/v16/EYqzma1QwqpG4_BBB7-AXhttQ5I.ttf
+- Font Source: https://fonts.gstatic.com/s/lemon/v18/HI_EiYEVKqRMq0jBSZXAQ4-d.ttf
 - Font License: undefined)

@@ -43,17 +43,6 @@ $returnUrl = isset($_SERVER['REQUEST_URI']) ? $_SERVER['REQUEST_URI'] : $navBase
     </button>
     <div class="collapse navbar-collapse" id="navbarResponsive">
       <ul class="navbar-nav ml-auto">
-        <!-- <li class="nav-item">
-				<form class="form-inline" action="/action_page.php">
-					<input class="form-control col-md-8 mr-sm-2" type="text" placeholder="Search">
-					<button class="btn btn-success" type="submit">Search</button>
-				</form>
-			</li> -->
-        <li class="nav-item">
-          <span class="nav-link">Welcome <?php if (isset($_SESSION['role'])) {
-                                            echo ' (' . htmlspecialchars($_SESSION['role']) . ')';
-                                          } ?></span>
-        </li>
         <?php if (count($activeStores) > 0) { ?>
           <li class="nav-item d-flex align-items-center mr-2">
             <form class="form-inline" action="model/store/switchStore.php" method="post">
