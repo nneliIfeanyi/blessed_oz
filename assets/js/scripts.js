@@ -1458,7 +1458,11 @@ function bindPurchaseItemRowEvents() {
 
 $(document).off('click', '.purchase-item-number-suggestions .suggestionsList li').on('click', '.purchase-item-number-suggestions .suggestionsList li', function () {
 	var row = $(this).closest('.purchase-item-row');
-	row.find('.purchase-item-number').val($(this).text());
+	var selectedNumber = $(this).attr('data-item-number') || $(this).data('item-number') || $.trim($(this).text());
+	if (!$(this).attr('data-item-number') && selectedNumber.indexOf('—') !== -1) {
+		selectedNumber = $.trim(selectedNumber.split('—')[0]);
+	}
+	row.find('.purchase-item-number').val(selectedNumber);
 	row.find('.purchase-item-number-suggestions').fadeOut();
 	populatePurchaseItemRowDetails(row);
 });
@@ -1480,6 +1484,7 @@ function populatePurchaseItemRowDetails(row) {
 			showToastMessage('Item not found in offline catalog: ' + itemNumber, 'purchaseDetailsMessage');
 			return;
 		}
+		row.find('.purchase-item-number').val(localPurchaseItem.itemNumber);
 		row.find('.purchase-item-name').val(localPurchaseItem.itemName || '');
 		var purchaseUnitOff = localPurchaseItem.unitAsSold || 'pcs';
 		row.find('.purchase-item-unit').val(purchaseUnitOff);
@@ -1487,11 +1492,13 @@ function populatePurchaseItemRowDetails(row) {
 		row.find('.purchase-item-stock').val(
 			window.offlineCatalog.itemAvailable(localPurchaseItem)
 		);
-		if (localPurchaseItem.unitPrice !== undefined) {
-			row.find('.purchase-item-unit-price').val(localPurchaseItem.unitPrice);
-		}
+		row.find('.purchase-item-unit-price').val(
+			localPurchaseItem.unitPrice !== undefined && localPurchaseItem.unitPrice !== null
+				? localPurchaseItem.unitPrice
+				: 0
+		);
 		if (window.inventorySync && typeof window.inventorySync.recordKnownStock === 'function') {
-			window.inventorySync.recordKnownStock(itemNumber, localPurchaseItem.stock);
+			window.inventorySync.recordKnownStock(localPurchaseItem.itemNumber, localPurchaseItem.stock);
 		}
 		calculatePurchaseItemRowTotal(row);
 		return;
@@ -1738,7 +1745,13 @@ function bindSaleItemRowEvents() {
 
 $(document).off('click', '.sale-item-number-suggestions .suggestionsList li').on('click', '.sale-item-number-suggestions .suggestionsList li', function () {
 	var row = $(this).closest('.sale-item-row');
-	row.find('.sale-item-number').val($(this).text());
+	// Prefer data-item-number (offline labels include "number — name")
+	var selectedNumber = $(this).attr('data-item-number') || $(this).data('item-number') || $.trim($(this).text());
+	// If label was "NUM — Name", take part before em dash when no data attr
+	if (!$(this).attr('data-item-number') && selectedNumber.indexOf('—') !== -1) {
+		selectedNumber = $.trim(selectedNumber.split('—')[0]);
+	}
+	row.find('.sale-item-number').val(selectedNumber);
 	row.find('.sale-item-number-suggestions').fadeOut();
 	populateSaleItemRowDetails(row);
 });
@@ -1760,20 +1773,22 @@ function populateSaleItemRowDetails(row) {
 			showToastMessage('Item not found in offline catalog: ' + itemNumber, 'saleDetailsMessage');
 			return;
 		}
+		// Normalize field to real item number (may have been looked up by name)
+		row.find('.sale-item-number').val(localItem.itemNumber);
 		var avail = window.offlineCatalog.itemAvailable(localItem);
 		row.find('.sale-item-name').val(localItem.itemName || '');
 		var saleUnitOff = localItem.unitAsSold || 'pcs';
 		row.find('.sale-item-unit').val(saleUnitOff);
 		row.find('.sale-item-unit-badge').text(saleUnitOff);
 		row.find('.sale-item-stock').val(avail);
-		if (localItem.unitPrice !== undefined) {
-			row.find('.sale-item-unit-price').val(localItem.unitPrice);
-		}
-		if (localItem.discount !== undefined) {
-			row.find('.sale-item-discount').val(localItem.discount);
-		}
+		row.find('.sale-item-unit-price').val(
+			localItem.unitPrice !== undefined && localItem.unitPrice !== null ? localItem.unitPrice : 0
+		);
+		row.find('.sale-item-discount').val(
+			localItem.discount !== undefined && localItem.discount !== null ? localItem.discount : 0
+		);
 		if (window.inventorySync && typeof window.inventorySync.recordKnownStock === 'function') {
-			window.inventorySync.recordKnownStock(itemNumber, localItem.stock);
+			window.inventorySync.recordKnownStock(localItem.itemNumber, localItem.stock);
 		}
 		calculateSaleItemRowTotal(row);
 		return;

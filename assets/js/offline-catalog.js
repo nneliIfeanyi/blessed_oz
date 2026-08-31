@@ -122,16 +122,45 @@
         return prefix.concat(contains).slice(0, limit);
     }
 
-    function getItem(itemNumber) {
-        var want = String(itemNumber || '').trim();
+    /**
+     * Resolve catalog item by itemNumber (preferred) or itemName (exact, then unique partial).
+     * Users often type/search by name offline; the number field may briefly hold a name.
+     */
+    function getItem(itemNumberOrName) {
+        var want = String(itemNumberOrName || '').trim();
         if (want === '') {
             return null;
         }
         var items = getList('items');
-        for (var i = 0; i < items.length; i++) {
+        var i;
+        // 1) Exact item number
+        for (i = 0; i < items.length; i++) {
             if (String(items[i].itemNumber) === want) {
                 return items[i];
             }
+        }
+        // 2) Case-insensitive item number
+        var wantLower = want.toLowerCase();
+        for (i = 0; i < items.length; i++) {
+            if (String(items[i].itemNumber || '').toLowerCase() === wantLower) {
+                return items[i];
+            }
+        }
+        // 3) Exact item name (case-insensitive)
+        for (i = 0; i < items.length; i++) {
+            if (String(items[i].itemName || '').toLowerCase() === wantLower) {
+                return items[i];
+            }
+        }
+        // 4) Unique partial name match
+        var partial = [];
+        for (i = 0; i < items.length; i++) {
+            if (String(items[i].itemName || '').toLowerCase().indexOf(wantLower) !== -1) {
+                partial.push(items[i]);
+            }
+        }
+        if (partial.length === 1) {
+            return partial[0];
         }
         return null;
     }
@@ -209,7 +238,12 @@
         listId = listId || 'itemNumberSuggestionsList';
         var html = '<ul class="list-unstyled suggestionsList" id="' + listId + '">';
         for (var i = 0; i < items.length; i++) {
-            html += '<li>' + escapeHtml(items[i].itemNumber) + '</li>';
+            var it = items[i];
+            var label = escapeHtml(it.itemNumber);
+            if (it.itemName) {
+                label += ' — ' + escapeHtml(it.itemName);
+            }
+            html += '<li data-item-number="' + escapeHtml(it.itemNumber) + '">' + label + '</li>';
         }
         html += '</ul>';
         return html;
