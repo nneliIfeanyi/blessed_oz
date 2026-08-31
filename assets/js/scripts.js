@@ -1469,6 +1469,34 @@ function populatePurchaseItemRowDetails(row) {
 		return;
 	}
 
+	// Offline autofill from local catalog (includes zero-stock items)
+	if (!navigator.onLine && window.offlineCatalog && typeof window.offlineCatalog.getItem === 'function') {
+		if (!window.offlineCatalog.hasCatalog()) {
+			showToastMessage(window.offlineCatalog.emptyMessage('items'), 'purchaseDetailsMessage');
+			return;
+		}
+		var localPurchaseItem = window.offlineCatalog.getItem(itemNumber);
+		if (!localPurchaseItem) {
+			showToastMessage('Item not found in offline catalog: ' + itemNumber, 'purchaseDetailsMessage');
+			return;
+		}
+		row.find('.purchase-item-name').val(localPurchaseItem.itemName || '');
+		var purchaseUnitOff = localPurchaseItem.unitAsSold || 'pcs';
+		row.find('.purchase-item-unit').val(purchaseUnitOff);
+		row.find('.purchase-item-unit-badge').text(purchaseUnitOff);
+		row.find('.purchase-item-stock').val(
+			window.offlineCatalog.itemAvailable(localPurchaseItem)
+		);
+		if (localPurchaseItem.unitPrice !== undefined) {
+			row.find('.purchase-item-unit-price').val(localPurchaseItem.unitPrice);
+		}
+		if (window.inventorySync && typeof window.inventorySync.recordKnownStock === 'function') {
+			window.inventorySync.recordKnownStock(itemNumber, localPurchaseItem.stock);
+		}
+		calculatePurchaseItemRowTotal(row);
+		return;
+	}
+
 	$.ajax({
 		url: 'model/item/populateItemDetails.php',
 		method: 'POST',
@@ -1524,6 +1552,22 @@ function addPurchase() {
 	$addPurchaseButton.data('original-text', originalButtonText);
 
 	if (!navigator.onLine && window.inventorySync && typeof window.inventorySync.addToOutbox === 'function') {
+		var offlineVendorName = String(purchaseDetailsVendorName || '').trim();
+		if (offlineVendorName === '') {
+			showToastMessage('Please select a vendor before saving offline.', 'purchaseDetailsMessage');
+			return;
+		}
+		if (window.offlineCatalog) {
+			if (!window.offlineCatalog.hasVendors()) {
+				showToastMessage(window.offlineCatalog.emptyMessage('vendors'), 'purchaseDetailsMessage');
+				return;
+			}
+			if (!window.offlineCatalog.getVendorByName(offlineVendorName)) {
+				showToastMessage('Vendor does not exist in offline catalog. Select a known vendor.', 'purchaseDetailsMessage');
+				return;
+			}
+		}
+
 		$('.purchase-item-row').each(function () {
 			var row = $(this);
 			purchaseItems.push({
@@ -1533,14 +1577,14 @@ function addPurchase() {
 				unitPrice: row.find('.purchase-item-unit-price').val(),
 				stock: row.find('.purchase-item-stock').val(),
 				purchaseDate: purchaseDetailsPurchaseDate,
-				vendorName: purchaseDetailsVendorName
+				vendorName: offlineVendorName
 			});
 		});
 
 		if (purchaseItems.length > 0) {
 			var entry = window.inventorySync.addToOutbox('purchase', {
 				purchaseDate: purchaseDetailsPurchaseDate,
-				vendorName: purchaseDetailsVendorName,
+				vendorName: offlineVendorName,
 				items: purchaseItems
 			});
 			if (entry) {
@@ -1702,6 +1746,36 @@ $(document).off('click', '.sale-item-number-suggestions .suggestionsList li').on
 function populateSaleItemRowDetails(row) {
 	var itemNumber = row.find('.sale-item-number').val();
 	if (!itemNumber) {
+		return;
+	}
+
+	// Offline autofill from local catalog
+	if (!navigator.onLine && window.offlineCatalog && typeof window.offlineCatalog.getItem === 'function') {
+		if (!window.offlineCatalog.hasCatalog()) {
+			showToastMessage(window.offlineCatalog.emptyMessage('items'), 'saleDetailsMessage');
+			return;
+		}
+		var localItem = window.offlineCatalog.getItem(itemNumber);
+		if (!localItem) {
+			showToastMessage('Item not found in offline catalog: ' + itemNumber, 'saleDetailsMessage');
+			return;
+		}
+		var avail = window.offlineCatalog.itemAvailable(localItem);
+		row.find('.sale-item-name').val(localItem.itemName || '');
+		var saleUnitOff = localItem.unitAsSold || 'pcs';
+		row.find('.sale-item-unit').val(saleUnitOff);
+		row.find('.sale-item-unit-badge').text(saleUnitOff);
+		row.find('.sale-item-stock').val(avail);
+		if (localItem.unitPrice !== undefined) {
+			row.find('.sale-item-unit-price').val(localItem.unitPrice);
+		}
+		if (localItem.discount !== undefined) {
+			row.find('.sale-item-discount').val(localItem.discount);
+		}
+		if (window.inventorySync && typeof window.inventorySync.recordKnownStock === 'function') {
+			window.inventorySync.recordKnownStock(itemNumber, localItem.stock);
+		}
+		calculateSaleItemRowTotal(row);
 		return;
 	}
 
@@ -2100,25 +2174,32 @@ function showSuggestions(textBoxID, scriptPath, suggestionsDivID, extraData) {
 	// Get the value entered by the user
 	var textBoxValue = $('#' + textBoxID).val();
 
-	// Call the showPurchaseIDs.php script only if there is a value in the
-	// purchase ID textbox
-	if (textBoxValue != '') {
-		var requestData = { textBoxValue: textBoxValue };
-		if (extraData && typeof extraData === 'object') {
-			requestData = $.extend({}, requestData, extraData);
-		}
-		$.ajax({
-			url: scriptPath,
-			method: 'POST',
-			data: requestData,
-			success: function (data) {
-				$('#' + suggestionsDivID).fadeIn();
-				$('#' + suggestionsDivID).html(data);
-			}
-		});
-	} else {
+	if (textBoxValue == '') {
 		$('#' + suggestionsDivID).fadeOut().empty();
+		return;
 	}
+
+	// Offline: local catalog (items / customers) — same suggestion UI
+	if (!navigator.onLine && window.offlineCatalog && typeof window.offlineCatalog.applyOfflineSuggestions === 'function') {
+		var handled = window.offlineCatalog.applyOfflineSuggestions(textBoxID, scriptPath, suggestionsDivID);
+		if (handled) {
+			return;
+		}
+	}
+
+	var requestData = { textBoxValue: textBoxValue };
+	if (extraData && typeof extraData === 'object') {
+		requestData = $.extend({}, requestData, extraData);
+	}
+	$.ajax({
+		url: scriptPath,
+		method: 'POST',
+		data: requestData,
+		success: function (data) {
+			$('#' + suggestionsDivID).fadeIn();
+			$('#' + suggestionsDivID).html(data);
+		}
+	});
 }
 
 
@@ -2228,6 +2309,22 @@ function getCustomerDetailsToPopulate() {
 function getCustomerDetailsToPopulateSaleTab() {
 	// Get the customerID entered in the text box
 	var customerDetailsCustomerID = $('#saleDetailsCustomerID').val();
+
+	// Offline: fill name from local customer catalog
+	if (!navigator.onLine && window.offlineCatalog && typeof window.offlineCatalog.getCustomer === 'function') {
+		if (!window.offlineCatalog.hasCustomers()) {
+			showToastMessage(window.offlineCatalog.emptyMessage('customers'), 'saleDetailsMessage');
+			return;
+		}
+		var localCust = window.offlineCatalog.getCustomer(customerDetailsCustomerID);
+		if (!localCust) {
+			showToastMessage('Customer does not exist in offline catalog.', 'saleDetailsMessage');
+			$('#saleDetailsCustomerName').val('');
+			return;
+		}
+		$('#saleDetailsCustomerName').val(localCust.fullName || '');
+		return;
+	}
 
 	// Call the populateCustomerDetails.php script to get customer details
 	// relevant to the customerID which the user entered

@@ -37,12 +37,14 @@
         window.userSession = {
             isProActive: <?php echo isset($_SESSION['isProActive']) && $_SESSION['isProActive'] === true ? 'true' : 'false'; ?>,
             subscriptionPlan: '<?php echo isset($_SESSION['subscription_plan']) ? htmlentities($_SESSION['subscription_plan'], ENT_QUOTES, 'UTF-8') : 'free'; ?>',
-            subscriptionExpiresAt: '<?php echo isset($_SESSION['subscription_expires_at']) ? htmlentities($_SESSION['subscription_expires_at'], ENT_QUOTES, 'UTF-8') : ''; ?>'
+            subscriptionExpiresAt: '<?php echo isset($_SESSION['subscription_expires_at']) ? htmlentities($_SESSION['subscription_expires_at'], ENT_QUOTES, 'UTF-8') : ''; ?>',
+            activeStoreID: <?php echo isset($_SESSION['activeStoreID']) ? (int) $_SESSION['activeStoreID'] : 1; ?>
         };
     </script>
 
     <!-- Custom scripts -->
     <script src="assets/js/scripts.js?v=<?php echo filemtime(__DIR__ . '/../assets/js/scripts.js'); ?>"></script>
     <script src="assets/js/db-sync.js?v=<?php echo filemtime(__DIR__ . '/../assets/js/db-sync.js'); ?>"></script>
+    <script src="assets/js/offline-catalog.js?v=<?php echo file_exists(__DIR__ . '/../assets/js/offline-catalog.js') ? filemtime(__DIR__ . '/../assets/js/offline-catalog.js') : time(); ?>"></script>
     <script src="assets/js/login.js?v=<?php echo filemtime(__DIR__ . '/../assets/js/login.js'); ?>"></script>
     <script src="assets/js/pwa.js?v=<?php echo filemtime(__DIR__ . '/../assets/js/pwa.js'); ?>"></script>

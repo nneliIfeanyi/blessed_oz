@@ -2,7 +2,7 @@
     "name": "Leadstar Inventory",
     "short_name": "LEADSTAR",
     "id": "./",
-    "start_url": "./login.php",
+    "start_url": "./index.php",
     "scope": "./",
     "icons": [
         {

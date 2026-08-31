@@ -428,6 +428,10 @@ try {
                     </div>
                     <div class="card-body">
                         <p class="text-muted">Your browser's offline queue is shown below. This data is stored locally and synced when online.</p>
+                        <div id="offlineCatalogStatus" class="alert alert-secondary mb-3">
+                            Offline catalog status loading…
+                        </div>
+                        <button type="button" class="btn btn-sm btn-outline-primary mb-3" id="refreshOfflineCatalogBtn">Refresh offline catalog</button>
                         <div id="offlineQueueDisplay" class="alert alert-info">
                             Loading queue status... (requires JavaScript enabled)
                         </div>
@@ -576,6 +580,49 @@ try {
         displayOfflineQueue();
         setInterval(displayOfflineQueue, 2000);
         setInterval(updateConnectionStatus, 3000);
+
+        function updateOfflineCatalogStatus() {
+            var el = document.getElementById('offlineCatalogStatus');
+            if (!el) {
+                return;
+            }
+            if (window.offlineCatalog && typeof window.offlineCatalog.statusText === 'function') {
+                el.textContent = window.offlineCatalog.statusText();
+                el.className = window.offlineCatalog.hasCatalog()
+                    ? 'alert alert-success mb-3'
+                    : 'alert alert-warning mb-3';
+            } else {
+                el.textContent = 'Offline catalog module not loaded.';
+            }
+        }
+        updateOfflineCatalogStatus();
+        setInterval(updateOfflineCatalogStatus, 3000);
+        var refreshCatBtn = document.getElementById('refreshOfflineCatalogBtn');
+        if (refreshCatBtn) {
+            refreshCatBtn.addEventListener('click', function () {
+                if (!window.offlineCatalog || typeof window.offlineCatalog.refreshFromServer !== 'function') {
+                    alert('Offline catalog module not loaded.');
+                    return;
+                }
+                if (!navigator.onLine) {
+                    alert('Connect to the internet to refresh the offline catalog.');
+                    return;
+                }
+                refreshCatBtn.disabled = true;
+                refreshCatBtn.textContent = 'Refreshing…';
+                window.offlineCatalog.refreshFromServer().then(function (data) {
+                    updateOfflineCatalogStatus();
+                    alert(data && data.success
+                        ? 'Offline catalog updated (' + (data.counts && data.counts.items ? data.counts.items : 0) + ' items).'
+                        : 'Catalog refresh finished.');
+                }).catch(function (err) {
+                    alert('Catalog refresh failed: ' + (err.message || err));
+                }).then(function () {
+                    refreshCatBtn.disabled = false;
+                    refreshCatBtn.textContent = 'Refresh offline catalog';
+                });
+            });
+        }
 
         // Manual sync — clear feedback when queue empty (e.g. auto-sync already ran)
         function manualSync() {
