@@ -1,5 +1,9 @@
 <?php
 require_once(__DIR__ . '/store.php');
+// auth.php may already be loaded by the page; load only if needed for Pro refresh
+if (!function_exists('loadUserSubscriptionSession') && file_exists(__DIR__ . '/auth.php')) {
+  require_once(__DIR__ . '/auth.php');
+}
 
 $settingsFile = __DIR__ . '/config/site_settings.json';
 $navigationSettings = getDefaultStoreSettings();
@@ -9,6 +13,10 @@ if (isset($conn)) {
   try {
     if (isset($_SESSION['loggedIn']) && $_SESSION['loggedIn'] === '1') {
       ensureActiveStoreSession($conn);
+      // Re-read plan from DB so admin/manual Pro grants apply without re-login
+      if (function_exists('loadUserSubscriptionSession')) {
+        loadUserSubscriptionSession($conn);
+      }
     }
 
     $activeStoreID = isset($_SESSION['activeStoreID']) ? (int) $_SESSION['activeStoreID'] : 1;

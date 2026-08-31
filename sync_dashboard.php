@@ -19,6 +19,15 @@ try {
 
 $activeStoreID = isset($_SESSION['activeStoreID']) ? (int) $_SESSION['activeStoreID'] : 1;
 $userID = isset($_SESSION['userID']) ? (int) $_SESSION['userID'] : 0;
+
+// Re-read plan from DB so admin/manual Pro grants apply without re-login
+if (function_exists('loadUserSubscriptionSession')) {
+    try {
+        loadUserSubscriptionSession($conn, $userID);
+    } catch (Exception $e) {
+        // keep session defaults
+    }
+}
 $isProActive = function_exists('isProActive') ? isProActive() : false;
 
 // Ensure subscription columns exist (shared hosts often lack them until first login path runs)

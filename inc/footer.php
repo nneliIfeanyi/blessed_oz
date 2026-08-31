@@ -23,7 +23,16 @@
     <!-- Bootbox JS -->
     <script src="vendor/bootbox/bootbox.min.js"></script>
 
-    <!-- Session & Subscription context -->
+    <!-- Session & Subscription context (refreshed from DB when possible) -->
+    <?php
+    if (isset($conn) && isset($_SESSION['loggedIn']) && $_SESSION['loggedIn'] === '1' && function_exists('loadUserSubscriptionSession')) {
+        try {
+            loadUserSubscriptionSession($conn);
+        } catch (Exception $e) {
+            // keep existing session values
+        }
+    }
+    ?>
     <script>
         window.userSession = {
             isProActive: <?php echo isset($_SESSION['isProActive']) && $_SESSION['isProActive'] === true ? 'true' : 'false'; ?>,

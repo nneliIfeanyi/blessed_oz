@@ -7,6 +7,15 @@ require_once('../../inc/store.php');
 
 header('Content-Type: application/json');
 
+// Re-read subscription from DB so admin-granted Pro works without re-login
+if (isset($_SESSION['userID']) && function_exists('loadUserSubscriptionSession')) {
+	try {
+		loadUserSubscriptionSession($conn, (int) $_SESSION['userID']);
+	} catch (Exception $e) {
+		// fall through to isProActive check
+	}
+}
+
 // Verify user is logged in and Pro-active
 if (!isset($_SESSION['userID']) || !isProActive()) {
 	http_response_code(403);

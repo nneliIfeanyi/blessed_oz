@@ -13,6 +13,7 @@ require_once('inc/store.php');
 ensureUserRoleColumn($conn);
 bootstrapFirstSuperAdmin($conn);
 ensureActiveStoreSession($conn);
+loadUserSubscriptionSession($conn);
 
 if (!isset($_SESSION['role']) || $_SESSION['role'] !== 'super_admin') {
     header('Location: index.php?accessDenied=settings');

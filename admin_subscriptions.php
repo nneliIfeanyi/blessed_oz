@@ -24,20 +24,38 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     
     if ($action === 'updateSubscription') {
         $userID = isset($_POST['userID']) ? (int) $_POST['userID'] : 0;
-        $plan = isset($_POST['subscriptionPlan']) ? trim((string) $_POST['subscriptionPlan']) : 'free';
-        $cycle = isset($_POST['subscriptionCycle']) ? trim((string) $_POST['subscriptionCycle']) : null;
-        $expiresAt = isset($_POST['subscriptionExpiresAt']) ? trim((string) $_POST['subscriptionExpiresAt']) : null;
-        
-        if ($userID > 0 && in_array($plan, ['free', 'pro', 'business'])) {
+        $plan = strtolower(trim((string) (isset($_POST['subscriptionPlan']) ? $_POST['subscriptionPlan'] : 'free')));
+        $cycle = isset($_POST['subscriptionCycle']) ? trim((string) $_POST['subscriptionCycle']) : '';
+        $cycle = ($cycle !== '') ? $cycle : null;
+        $expiresAt = isset($_POST['subscriptionExpiresAt']) ? trim((string) $_POST['subscriptionExpiresAt']) : '';
+        // Normalize HTML datetime-local (2026-12-31T23:59) → MySQL datetime; empty → NULL
+        if ($expiresAt === '') {
+            $expiresAt = null;
+        } else {
+            $expiresAt = str_replace('T', ' ', $expiresAt);
+            if (preg_match('/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/', $expiresAt)) {
+                $expiresAt .= ':00';
+            }
+        }
+
+        if ($userID > 0 && in_array($plan, ['free', 'pro', 'business'], true)) {
             try {
-                $updateStmt = $conn->prepare('UPDATE `user` SET subscription_plan = :plan, subscription_cycle = :cycle, subscription_expires_at = :expiresAt WHERE userID = :userID');
+                $updateStmt = $conn->prepare(
+                    'UPDATE `user` SET subscription_plan = :plan, subscription_cycle = :cycle, subscription_expires_at = :expiresAt WHERE userID = :userID'
+                );
                 $updateStmt->execute([
                     'userID' => $userID,
                     'plan' => $plan,
                     'cycle' => $cycle,
                     'expiresAt' => $expiresAt
                 ]);
-                $message = 'Subscription updated successfully.';
+
+                // If admin updated the currently logged-in user, refresh their session immediately
+                if (isset($_SESSION['userID']) && (int) $_SESSION['userID'] === $userID) {
+                    loadUserSubscriptionSession($conn, $userID);
+                }
+
+                $message = 'Subscription updated successfully. The user will see Pro features on the next page load (or immediately if this is their account).';
                 $messageType = 'success';
             } catch (PDOException $e) {
                 $message = 'Error updating subscription: ' . $e->getMessage();

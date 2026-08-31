@@ -48,6 +48,16 @@ function ensureSubscriptionColumns(PDO $conn)
     }
 }
 
+function isPaidSubscriptionPlan($plan)
+{
+    $plan = strtolower(trim((string) $plan));
+    return in_array($plan, ['pro', 'business'], true);
+}
+
+/**
+ * Load subscription from DB into session. Call on login AND on each authenticated page
+ * so admin/manual plan changes take effect without forcing logout.
+ */
 function loadUserSubscriptionSession(PDO $conn, $userID = null)
 {
     $userID = (int) ($userID ?? ($_SESSION['userID'] ?? 0));
@@ -59,44 +69,81 @@ function loadUserSubscriptionSession(PDO $conn, $userID = null)
     ];
 
     if ($userID > 0) {
-        $userColumnCheck = $conn->query("SHOW COLUMNS FROM `user` LIKE 'subscription_plan'");
-        if ($userColumnCheck && $userColumnCheck->rowCount() > 0) {
-            $userSubscriptionStatement = $conn->prepare('SELECT subscription_plan, subscription_cycle, subscription_expires_at FROM `user` WHERE userID = :userID LIMIT 1');
-            $userSubscriptionStatement->execute(['userID' => $userID]);
-            if ($userSubscriptionStatement->rowCount() > 0) {
+        try {
+            $userColumnCheck = $conn->query("SHOW COLUMNS FROM `user` LIKE 'subscription_plan'");
+            if ($userColumnCheck && $userColumnCheck->rowCount() > 0) {
+                $userSubscriptionStatement = $conn->prepare(
+                    'SELECT subscription_plan, subscription_cycle, subscription_expires_at FROM `user` WHERE userID = :userID LIMIT 1'
+                );
+                $userSubscriptionStatement->execute(['userID' => $userID]);
                 $userSubscription = $userSubscriptionStatement->fetch(PDO::FETCH_ASSOC);
-                $profile['plan'] = isset($userSubscription['subscription_plan']) && $userSubscription['subscription_plan'] !== '' ? $userSubscription['subscription_plan'] : 'free';
-                $profile['cycle'] = $userSubscription['subscription_cycle'] ?? null;
-                $profile['expires_at'] = $userSubscription['subscription_expires_at'] ?? null;
+                if (is_array($userSubscription)) {
+                    $rawPlan = isset($userSubscription['subscription_plan']) ? trim((string) $userSubscription['subscription_plan']) : '';
+                    $profile['plan'] = $rawPlan !== '' ? strtolower($rawPlan) : 'free';
+                    $profile['cycle'] = !empty($userSubscription['subscription_cycle'])
+                        ? $userSubscription['subscription_cycle']
+                        : null;
+                    $rawExpiry = isset($userSubscription['subscription_expires_at'])
+                        ? trim((string) $userSubscription['subscription_expires_at'])
+                        : '';
+                    $profile['expires_at'] = ($rawExpiry !== '' && $rawExpiry !== '0000-00-00 00:00:00')
+                        ? $rawExpiry
+                        : null;
+                }
             }
+        } catch (PDOException $e) {
+            // keep free defaults
         }
     }
 
+    // Fallback: store-level plan if user is still free
     if ($profile['plan'] === 'free') {
         $activeStoreID = isset($_SESSION['activeStoreID']) ? (int) $_SESSION['activeStoreID'] : 1;
-        $storeColumnCheck = $conn->query("SHOW COLUMNS FROM `stores` LIKE 'subscription_plan'");
-        if ($storeColumnCheck && $storeColumnCheck->rowCount() > 0) {
-            $storeSubscriptionStatement = $conn->prepare('SELECT subscription_plan, subscription_cycle, subscription_expires_at FROM `stores` WHERE storeID = :storeID LIMIT 1');
-            $storeSubscriptionStatement->execute(['storeID' => $activeStoreID]);
-            if ($storeSubscriptionStatement->rowCount() > 0) {
+        try {
+            $storeColumnCheck = $conn->query("SHOW COLUMNS FROM `stores` LIKE 'subscription_plan'");
+            if ($storeColumnCheck && $storeColumnCheck->rowCount() > 0) {
+                $storeSubscriptionStatement = $conn->prepare(
+                    'SELECT subscription_plan, subscription_cycle, subscription_expires_at FROM `stores` WHERE storeID = :storeID LIMIT 1'
+                );
+                $storeSubscriptionStatement->execute(['storeID' => $activeStoreID]);
                 $storeSubscription = $storeSubscriptionStatement->fetch(PDO::FETCH_ASSOC);
-                $profile['plan'] = isset($storeSubscription['subscription_plan']) && $storeSubscription['subscription_plan'] !== '' ? $storeSubscription['subscription_plan'] : 'free';
-                $profile['cycle'] = $storeSubscription['subscription_cycle'] ?? null;
-                $profile['expires_at'] = $storeSubscription['subscription_expires_at'] ?? null;
+                if (is_array($storeSubscription)) {
+                    $rawPlan = isset($storeSubscription['subscription_plan']) ? trim((string) $storeSubscription['subscription_plan']) : '';
+                    if ($rawPlan !== '') {
+                        $profile['plan'] = strtolower($rawPlan);
+                        $profile['cycle'] = !empty($storeSubscription['subscription_cycle'])
+                            ? $storeSubscription['subscription_cycle']
+                            : null;
+                        $rawExpiry = isset($storeSubscription['subscription_expires_at'])
+                            ? trim((string) $storeSubscription['subscription_expires_at'])
+                            : '';
+                        $profile['expires_at'] = ($rawExpiry !== '' && $rawExpiry !== '0000-00-00 00:00:00')
+                            ? $rawExpiry
+                            : null;
+                    }
+                }
             }
+        } catch (PDOException $e) {
+            // keep current profile
         }
     }
 
-    if (isset($profile['expires_at']) && $profile['expires_at'] !== null && $profile['expires_at'] !== '') {
+    $isPaidPlan = isPaidSubscriptionPlan($profile['plan']);
+
+    if ($isPaidPlan && $profile['expires_at'] !== null) {
         try {
-            $expiresAt = new DateTimeImmutable((string) $profile['expires_at']);
+            // Accept both "Y-m-d H:i:s" and HTML datetime-local "Y-m-d\TH:i"
+            $expiresRaw = str_replace('T', ' ', (string) $profile['expires_at']);
+            $expiresAt = new DateTimeImmutable($expiresRaw);
             $now = new DateTimeImmutable('now');
-            $profile['is_pro_active'] = ($profile['plan'] === 'pro' && $expiresAt > $now);
+            $profile['is_pro_active'] = ($expiresAt > $now);
         } catch (Exception $e) {
-            $profile['is_pro_active'] = false;
+            // Unparseable expiry: treat paid plan without valid expiry as active
+            $profile['is_pro_active'] = true;
         }
     } else {
-        $profile['is_pro_active'] = ($profile['plan'] === 'pro');
+        // No expiry set → paid plan stays active until admin clears it
+        $profile['is_pro_active'] = $isPaidPlan;
     }
 
     $_SESSION['subscription_plan'] = $profile['plan'];
@@ -110,6 +157,21 @@ function loadUserSubscriptionSession(PDO $conn, $userID = null)
 function isProActive()
 {
     return !empty($_SESSION['isProActive']) && $_SESSION['isProActive'] === true;
+}
+
+/**
+ * Re-read Pro status from DB when $conn is available (keeps gating in sync after admin updates).
+ */
+function refreshProStatusFromDb(PDO $conn = null)
+{
+    if (!isset($_SESSION['loggedIn']) || $_SESSION['loggedIn'] !== '1') {
+        return false;
+    }
+    if ($conn === null) {
+        return isProActive();
+    }
+    loadUserSubscriptionSession($conn);
+    return isProActive();
 }
 
 function bootstrapFirstSuperAdmin(PDO $conn)

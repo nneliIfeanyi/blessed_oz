@@ -12,6 +12,9 @@ require_once('../../inc/auth.php');
 require_once('../../inc/store.php');
 
 ensureActiveStoreSession($conn);
+if (function_exists('loadUserSubscriptionSession')) {
+    loadUserSubscriptionSession($conn);
+}
 
 // Multi-store switching is a Pro feature — free users stay on their current / main store
 if (isset($_POST['storeID'])) {
